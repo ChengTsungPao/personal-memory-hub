@@ -149,6 +149,45 @@ MEMORY_LLM_MODEL=qwen3-mem
 MEMORY_LLM_PROTOCOL=openai
 ```
 
+#### Why `qwen3:8b`, not a bigger model
+
+L1 extraction, dedup and persona generation each have a **180-second timeout
+hard-coded** in MemoryCore (`l1-extractor.ts`, `l1-dedup.ts`,
+`persona-generator.ts`) — `llm.timeoutMs` in the generated config does not
+apply to them. A model has to both fit on the GPU and finish inside that
+window; "it can run slower in the background" only holds up to 180s.
+
+Measured on an RTX 3060 12 GB, 6 extraction runs per config, real batches
+(one 10-message batch reached 7,407 input chars):
+
+| | `qwen3:8b` @ 32k ctx | `qwen3:14b` @ 8k ctx | `qwen3:14b` @ 16k/32k ctx |
+|---|---|---|---|
+| GPU placement | 100% GPU (9.8 GB) | 100% GPU (10 GB) | 13–28% spills to CPU |
+| Extraction time | 68–148s | 92–164s | **all runs hit the 180s timeout** |
+| Success rate | 6/6 | 4/6 (2 timeouts) | 0/6 |
+
+14b only fits on the GPU at a context small enough (8k) that it starts
+timing out anyway once the CPU-offload runs are included, and 8k is too small
+for real batches regardless — see the capacity table below. 8b at 32k is the
+only configuration that was both fully on-GPU and reliably under 180s.
+
+#### Context capacity by model/setting
+
+Chars-per-token measured directly against this Ollama instance (qwen3
+tokenizer): Chinese 1.98, English 5.03, code 4.02 chars/token. Usable tokens
+below subtract the ~2,660-token system prompt and a ~2,000-token output
+reserve.
+
+| Config | Usable tokens | ≈ Chinese chars | ≈ English chars | ≈ code lines |
+|---|---:|---:|---:|---:|
+| `qwen3:8b` @ 32k (recommended) | ~28,000 | ~55,000 | ~140,000 | ~1,600 |
+| `qwen3:8b` @ 16k | ~11,700 | ~23,000 | ~59,000 | ~670 |
+| `qwen3:14b` @ 8k | ~3,500 | ~6,900 | ~17,600 | ~200 |
+
+MemoryCore batches up to 20 messages at 8,192 chars each, so a single L1
+extraction call can legitimately need more than 14b @ 8k has room for —
+content gets silently truncated rather than the call failing loudly.
+
 ### 3. Panel UI (optional, but you probably want it)
 
 The browsable web panel does **not** need the proxy either — it talks to
@@ -229,7 +268,7 @@ on an RTX 3060 12 GB.
 | Repeat `Stop` on the same transcript | 0 re-sent (cursor) |
 | New turn appended | only that turn sent |
 | MemoryCore down | both hooks exit 0, print nothing, cursor not advanced |
-| L1 extraction (Ollama) | atoms stored in ~30–90 s per batch |
+| L1 extraction (Ollama) | atoms stored in ~70–150 s per batch (`qwen3:8b` @ 32k, 6-run sample) |
 | L2 scene generation | scene `.md` files created automatically |
 | L3 persona generation | `persona.md` written (≈2.7 k chars, ≈70 s) |
 | `SessionStart` hook | injects persona + scene index as `additionalContext` |
@@ -251,8 +290,9 @@ running it, not by reading the docs:
   corrupted the same key (`activity_end_time` → `activity_end,`). Default
   temperature: 3/5 batches parsed; temperature 0: 9/10. Upstream marks a
   failed batch as extracted anyway, so its L0 is kept but its L1 is never
-  retried. A larger model (`qwen3:14b` fits in 12 GB) should do better —
-  untested.
+  retried. `qwen3:14b` does **not** fix this — see *Why `qwen3:8b`, not a
+  bigger model* above: it either times out (180s hard-coded limit) or, at a
+  context small enough to stay on-GPU, has too little room for a real batch.
 - **L1 dedup is session-scoped** (upstream design, `l1-dedup.ts`). The same
   fact stated in two different sessions is stored twice; L2 aggregation is
   what consolidates it.
