@@ -1,0 +1,46 @@
+{
+  "_comment": [
+    "Merge the `env` and `hooks` blocks below into ~/.claude/settings.json.",
+    "Replace ABSOLUTE_PATH_TO_REPO with this repository's absolute path.",
+    "On Windows use forward slashes, e.g. C:/Users/you/personal-memory-hub.",
+    "Every TDAI_* value here is non-secret routing/identity config; the",
+    "gateway token, if your deployment sets one, belongs in your shell",
+    "environment rather than this file."
+  ],
+
+  "env": {
+    "TDAI_ENDPOINT": "http://127.0.0.1:8420",
+    "TDAI_SERVICE_ID": "default",
+    "TDAI_TEAM_ID": "default",
+    "TDAI_AGENT_ID": "default",
+    "TDAI_USER_ID": "default"
+  },
+
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": ["ABSOLUTE_PATH_TO_REPO/agents/claude-code/hooks/memory-recall.mjs"],
+            "timeout": 10,
+            "statusMessage": "Loading long-term memory..."
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": ["ABSOLUTE_PATH_TO_REPO/agents/claude-code/hooks/memory-capture.mjs"],
+            "timeout": 15
+          }
+        ]
+      }
+    ]
+  }
+}
