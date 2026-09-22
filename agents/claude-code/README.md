@@ -298,6 +298,42 @@ running it, not by reading the docs:
   what consolidates it.
 - **L1 is written in Simplified Chinese** — upstream's extraction prompts are.
 
+## Data locality / network exposure
+
+**No Tencent Cloud VectorDB.** `storeBackend: sqlite` in the generated config;
+`docker inspect` on the running containers shows no `tcvdb`/`tencent`-related
+env var. Storage is a local SQLite file on a named Docker volume.
+
+**Nothing in this deployment is configured to call an external service.**
+`MEMORY_LLM_*` points at local Ollama; `PROXY_*` is set to `unused` and the
+proxy is never started (see *What changed, and why* — that's the entire point
+of this integration); no `OPENAI_API_KEY`, telemetry endpoint, or other
+outbound credential is set anywhere in `.env` or the container env. So today,
+nothing actually leaves the machine.
+
+**That said, the containers technically *can* reach the real internet** — a
+plain Docker bridge network NATs outbound traffic by default, and `curl
+https://www.google.com` from inside `tdai-memory-core` returns 200. Nothing
+*uses* that path, but it exists. Two attempts to close it off at the Docker
+network layer, both tested and both rejected because they broke required
+connectivity — Docker Desktop on Windows/WSL2 routes host↔container traffic
+through the *same* NAT boundary as container↔internet traffic, so blocking one
+blocks the other:
+
+| Approach | Blocks internet | Host → Panel (`-p` ports) | Container → Ollama (`host.docker.internal`) |
+|---|:---:|:---:|:---:|
+| `docker network create --internal` | ✅ | ❌ broken | ❌ broken |
+| `-o com.docker.network.bridge.enable_ip_masquerade=false` | ✅ | ✅ | ❌ broken |
+
+Neither is usable as-is: the first kills the Panel, the second kills
+extraction. The clean fix would be running Ollama in a container on the same
+Docker network as MemoryCore — extraction traffic becomes container↔container
+(verified working above, unaffected by either restriction) instead of crossing
+the host boundary at all, and the network could then genuinely block internet
+egress. That requires GPU passthrough into a container under WSL2 (NVIDIA
+Container Toolkit), which has not been set up or tested here, so it's left as
+a known next step rather than done speculatively.
+
 ## Design notes
 
 **The `Stop` hook fires every turn.** Sending the whole transcript each time
