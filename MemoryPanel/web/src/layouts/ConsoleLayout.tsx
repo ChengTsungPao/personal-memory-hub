@@ -82,7 +82,21 @@ export function ConsoleLayout() {
     setOpenPages((prev) => (prev.includes(activePage) ? prev : [...prev, activePage]));
   }, [activePage, isGuide]);
 
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  // 侧栏默认展开；手机宽度（<=768px，与 GlobalHeader 的断点一致）首次进入时
+  // 自动收起以腾出内容区空间。之后仍可用 fold 按钮手动切换，不会跟用户的
+  // 手动操作打架 —— 只在「进入手机宽度」这个跳变时收起一次，离开手机宽度
+  // 不强制展开。
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(
+    () => typeof window !== 'undefined' && window.innerWidth <= 768,
+  );
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 768px)');
+    const onChange = (e: MediaQueryListEvent) => {
+      if (e.matches) setSidebarCollapsed(true);
+    };
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, []);
 
   // 首次使用引导：登录后按「每用户仅首次」判定自动弹出
   const currentUserId = auth?.user_id;

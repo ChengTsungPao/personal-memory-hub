@@ -293,3 +293,23 @@
   justify-content: center;
   gap: 4px;
 }
+
+/* ===== Mobile (<=640px): the id line ("team-xxxxxxxx") is the biggest
+   contributor to the trigger's intrinsic width and isn't needed once the
+   team name is shown — drop it and cap the trigger so it truncates
+   instead of overflowing into the brand text next to it. ===== */
+@media (max-width: 640px) {
+  ._memory-team-switcher-trigger {
+    max-width: 140px;
+  }
+
+  ._memory-team-switcher-id {
+    display: none;
+  }
+
+  ._memory-team-switcher-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}

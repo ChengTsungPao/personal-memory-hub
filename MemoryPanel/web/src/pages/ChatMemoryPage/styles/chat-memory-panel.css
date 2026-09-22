@@ -221,7 +221,7 @@
   font-weight: 600;
   color: var(--tea-color-text-primary);
   line-height: 1.4;
-  word-break: break-all;
+  overflow-wrap: break-word;
   display: flex;
   align-items: baseline;
   flex-wrap: wrap;
@@ -1181,4 +1181,21 @@
   color: var(--tea-color-text-primary);
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+/* ===== Mobile (<=640px): _memory-detail-header has no flex-wrap, so the
+   fixed-width actions block (refresh + date-range picker) claims its full
+   intrinsic width first and squeezes the flex:1 title column down to a
+   sliver — combined with word-break:break-all on the title, that broke
+   every character onto its own line. Wrap the actions below the title
+   instead of fighting them for the same row. ===== */
+@media (max-width: 640px) {
+  ._memory-detail-header {
+    flex-wrap: wrap;
+  }
+
+  ._memory-detail-header-actions {
+    flex-basis: 100%;
+    justify-content: flex-end;
+  }
 }

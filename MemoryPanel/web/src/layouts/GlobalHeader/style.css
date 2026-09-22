@@ -221,3 +221,34 @@
   width: 100%;
   min-width: 0;
 }
+
+/* ===== Mobile (<=640px): header content overflows at desktop sizing —
+   brand text + team switcher + guide button don't fit and visually
+   overlap. Reclaim width by hiding secondary elements rather than trying
+   to shrink everything proportionally. ===== */
+@media (max-width: 640px) {
+  ._memory-global-header {
+    padding: 0 8px;
+    gap: 4px;
+  }
+
+  ._memory-global-header-brand-text {
+    display: none;
+  }
+
+  ._memory-global-header-divider {
+    display: none;
+  }
+
+  ._memory-global-header-guide-btn {
+    display: none;
+  }
+
+  ._memory-global-header-sync {
+    display: none;
+  }
+
+  ._memory-global-header-username {
+    display: none;
+  }
+}
