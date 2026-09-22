@@ -66,9 +66,11 @@ const TOOLS = [
   {
     name: "scenario_write",
     description:
-      "Create or replace an L2 scenario block. Use to record durable knowledge about a " +
-      "project or topic that should survive this session. Write Markdown. Replaces the " +
-      "whole file, so read it first when amending.",
+      "Replace the content of an EXISTING L2 scenario block. MemoryCore refuses to create " +
+      "new blocks through this API (404 'Scenario file not found') — new blocks are only " +
+      "born from the extraction pipeline. Use scenario_list first and pass a path it " +
+      "returned. Replaces the whole file, so read it first when amending. For durable " +
+      "facts that have no block yet, amend the L3 persona with core_write instead.",
     inputSchema: {
       type: "object",
       properties: {

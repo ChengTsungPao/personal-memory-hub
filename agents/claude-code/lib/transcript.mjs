@@ -82,12 +82,18 @@ export function readNewMessages(transcriptPath, afterUuid) {
     const text = extractText(entry);
     if (!text) continue; // pure thinking / tool-call turns carry no prose
 
+    // Both fields are `z.iso.datetime()` in conversationItemSchema — ISO
+    // strings, not epoch numbers (the API rejects a number with 400).
+    const when = entry.timestamp && !Number.isNaN(Date.parse(entry.timestamp))
+      ? new Date(entry.timestamp).toISOString()
+      : new Date().toISOString();
+
     messages.push({
       role,
       // The API caps content at 8192 characters.
       content: text.length > 8192 ? `${text.slice(0, 8189)}...` : text,
-      recorded_at: entry.timestamp ?? new Date().toISOString(),
-      timestamp: entry.timestamp ? Date.parse(entry.timestamp) : Date.now(),
+      timestamp: when,
+      recorded_at: when,
     });
 
     if (uuid) lastUuid = uuid;

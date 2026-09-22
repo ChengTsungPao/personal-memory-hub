@@ -74,15 +74,18 @@ Point it at a local Ollama and it costs nothing:
 | Capability | Without an extraction LLM | With local Ollama |
 |---|:---:|:---:|
 | L0 conversation capture | works | works |
-| Vector search (local `embeddinggemma-300m`, bundled) | works | works |
-| BM25 / keyword search | works | works |
-| L2 scenario blocks, L3 persona | readable + writable, **not auto-generated** | auto-generated |
+| Keyword search (BM25 / FTS) | works | works |
+| Vector search | **off** in the official deploy script (`embedding: provider: none`) — see *Verified behaviour* | same |
+| L3 persona | readable + writable (can be created), **not auto-generated** | auto-generated |
+| L2 scenario blocks | readable, and existing ones editable — but **cannot be created**: `/v3/scenario/write` refuses unknown paths (404), so only the pipeline makes new blocks | works |
 | L1 atoms | **unavailable** — no create endpoint exists; only the pipeline makes them | works |
 | L1 conflict detection, skill extraction, reports | unavailable | works |
 
-Embeddings never need a key either way: MemoryCore bundles a local
-`embeddinggemma-300m` GGUF and falls back to it when no remote embedding is
-configured.
+MemoryCore's code does support a keyless local embedding provider
+(`embeddinggemma-300m` via node-llama-cpp), but `start-memory-core.sh` writes
+`embedding: provider: none`, so a stock deploy runs with vector search off and
+retrieves by keyword only. Turning it on means editing that script's generated
+config; that path has not been tested here.
 
 ## Setup
 
@@ -91,7 +94,24 @@ configured.
 `memory-core` is the only required service — the proxy is never started.
 
 ```bash
-deploy/global-images/start-memory-core.sh
+cd deploy/global-images
+cp .env.example .env          # then set MEMORY_LLM_* (see step 2)
+MSYS_NO_PATHCONV=1 bash start-memory-core.sh
+```
+
+**On Windows (Git Bash), `MSYS_NO_PATHCONV=1` is mandatory.** Without it Git
+Bash rewrites the container-side path in `-v …:/data/config/tdai-gateway.yaml`
+into `C:\Program Files\Git\data\config\…`, the config lands nowhere, and the
+container silently falls back to its built-in `gpt-4o` / OpenAI config — every
+extraction then fails with "You didn't provide an API key".
+
+The script's own `init-admin` call also reports `HTTP=000` under Git Bash. If
+it does, create the admin by hand:
+
+```bash
+KEY="sk-mem-$(openssl rand -base64 48 | tr -dc 'A-Za-z0-9' | head -c 32)"
+curl -X POST http://127.0.0.1:8420/v3/internal/meta/user/init-admin   -H "Content-Type: application/json" -H "Authorization: Bearer local"   -H "x-tdai-service-id: default"   -d "{\"username\":\"admin\",\"user_key\":\"$KEY\"}"
+printf %s "$KEY" > .admin-key
 ```
 
 Note the port (default `8420`) and the `sk-mem-…` user key it prints.
@@ -108,12 +128,15 @@ ollama pull qwen3:8b
 cat > Modelfile <<'EOF'
 FROM qwen3:8b
 PARAMETER num_ctx 32768
+PARAMETER temperature 0
 EOF
 ollama create qwen3-mem -f Modelfile
 ```
 
 `qwen3:8b` at Q4 is about 5 GB, so a 12 GB card runs it with room for the
-larger context. Qwen is the pick over Llama here because extraction is
+larger context. **Set `temperature 0`** — at the model's default of 0.6,
+extraction produced malformed JSON in 2 of 5 runs; at 0 it was 1 in 10 (see
+*Verified behaviour*). Qwen is the pick over Llama here because extraction is
 JSON-structured and often Chinese.
 
 Then point MemoryCore at it. **Use `host.docker.internal`, not `localhost`** —
@@ -146,6 +169,17 @@ docker run -d --name tdai-memory-hub \
   docker.io/agentmemory/memory-hub:latest
 ```
 
+On Windows use the repo script rather than the raw `docker run` above, and set
+`MEMORY_HUB_PROXY_PUBLIC_URL` first — its host-IP detection calls
+`ipconfig getifaddr` (a macOS command), Windows' `ipconfig.exe` answers with
+its whole multi-line report instead, and the container crashes on the
+resulting broken string:
+
+```bash
+echo "MEMORY_HUB_PROXY_PUBLIC_URL=http://127.0.0.1:8096" >> .env   # display-only; no proxy runs
+MSYS_NO_PATHCONV=1 bash start-memory-hub.sh
+```
+
 Then open <http://localhost:8125> to browse teams, agents, and stored memory,
 and to create the Team / Agent / User records whose ids go in the environment
 below. Its `LLM_*` can point at the same local Ollama as MemoryCore.
@@ -162,8 +196,8 @@ settings file, so no secret is ever committed.
 |---|---|---|
 | `TDAI_ENDPOINT` | `http://127.0.0.1:8420` | MemoryCore base URL |
 | `TDAI_SERVICE_ID` | `default` | Instance id (`x-tdai-service-id`) |
-| `TDAI_KERNEL_TOKEN` | *(empty)* | Layer-1 gateway bearer token, if the gateway sets one |
-| `TDAI_TEAM_ID` | `default` | Isolation triple — v3 requires team + agent + user |
+| `TDAI_KERNEL_TOKEN` | *(empty → sends `Bearer local`)* | Layer-1 gateway token. The gateway rejects a request with **no** `Authorization` header even when it has no apiKey — it just doesn't check the value — so an empty token still sends a placeholder, as MemoryProxy does |
+| `TDAI_TEAM_ID` | `default` | Isolation triple — v3 requires team + agent + user. **Set these to the ids the panel shows** (e.g. `team-…`, `agt-…`, `usr-…`): memory written under `default` is stored fine but is invisible in the panel, which browses by its own ids |
 | `TDAI_AGENT_ID` | `default` | |
 | `TDAI_USER_ID` | `default` | |
 | `TDAI_TASK_ID` | *(unset)* | Optional; omitted from requests when empty |
@@ -183,6 +217,46 @@ claude mcp add memorycore -s user -- node /absolute/path/to/agents/claude-code/m
 ```
 
 Restart Claude Code; `claude mcp list` should show `memorycore ✔ Connected`.
+
+## Verified behaviour
+
+Run end-to-end on Windows 11, Docker Desktop 27, Ollama 0.33 with `qwen3:8b`
+on an RTX 3060 12 GB.
+
+| Step | Result |
+|---|---|
+| `Stop` hook → `/v3/conversation/add` | L0 stored; content byte-identical, Chinese intact |
+| Repeat `Stop` on the same transcript | 0 re-sent (cursor) |
+| New turn appended | only that turn sent |
+| MemoryCore down | both hooks exit 0, print nothing, cursor not advanced |
+| L1 extraction (Ollama) | atoms stored in ~30–90 s per batch |
+| L2 scene generation | scene `.md` files created automatically |
+| L3 persona generation | `persona.md` written (≈2.7 k chars, ≈70 s) |
+| `SessionStart` hook | injects persona + scene index as `additionalContext` |
+| MCP `memory_search` / `scenario_list` / `core_read` / `core_write` | work |
+| Panel UI | shows L0 / L1 / L2 once the env ids match the panel's |
+| Container recreate | admin user and L1 atoms persist (named volume) |
+
+Things that behave differently from what you might assume — each found by
+running it, not by reading the docs:
+
+- **The gateway needs an `Authorization` header even with no apiKey set.** It
+  just doesn't check the value. The client sends `Bearer local` when
+  `TDAI_KERNEL_TOKEN` is empty, as MemoryProxy does.
+- **`timestamp` / `recorded_at` must be ISO strings.** Epoch numbers get a 400.
+- **`/v3/scenario/write` cannot create a block** — it 404s on unknown paths.
+  New L2 blocks come only from the pipeline, so without an extraction LLM there
+  is no L2 at all. L3 (`/v3/core/write`) *can* be created directly.
+- **Extraction with `qwen3:8b` sometimes emits malformed JSON.** Every failure
+  corrupted the same key (`activity_end_time` → `activity_end,`). Default
+  temperature: 3/5 batches parsed; temperature 0: 9/10. Upstream marks a
+  failed batch as extracted anyway, so its L0 is kept but its L1 is never
+  retried. A larger model (`qwen3:14b` fits in 12 GB) should do better —
+  untested.
+- **L1 dedup is session-scoped** (upstream design, `l1-dedup.ts`). The same
+  fact stated in two different sessions is stored twice; L2 aggregation is
+  what consolidates it.
+- **L1 is written in Simplified Chinese** — upstream's extraction prompts are.
 
 ## Design notes
 

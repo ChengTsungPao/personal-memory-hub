@@ -38,9 +38,12 @@ export class CoreClient {
 
     const headers = {
       "content-type": "application/json",
+      // The gateway rejects a request with NO Authorization header even when it
+      // has no apiKey configured — "not enforced" only means the value is not
+      // checked. MemoryProxy sends `Bearer local-proxy` in that case; mirror it.
+      authorization: `Bearer ${cfg.kernelToken || "local"}`,
       "x-tdai-service-id": cfg.serviceId,
     };
-    if (cfg.kernelToken) headers.authorization = `Bearer ${cfg.kernelToken}`;
 
     try {
       const res = await fetch(`${cfg.endpoint}${route}`, {
