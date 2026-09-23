@@ -1,10 +1,20 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="zh-TW">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>Memory Hub</title>
     <link rel="icon" type="image/png" href="/logo.png" />
+
+    <!-- PWA: lets phones "Add to Home Screen" as a standalone app (no browser
+         chrome/URL bar) — Android Chrome reads manifest.webmanifest directly;
+         iOS Safari ignores it and needs these apple-* tags instead. -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="theme-color" content="#1a73e8" />
+    <link rel="apple-touch-icon" href="/icon-192.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="Memory Hub" />
   </head>
   <body>
     <div id="root"></div>

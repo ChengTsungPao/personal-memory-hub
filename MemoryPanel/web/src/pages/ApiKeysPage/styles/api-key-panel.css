@@ -75,3 +75,41 @@
   border-radius: 4px;
   background: var(--tea-color-bg-secondary-default);
 }
+
+/* Mobile (<=640px): the masked key string is a long nowrap monospace token;
+   forcing the whole table to reflow into the narrow viewport breaks that
+   token into single characters. Scroll the table horizontally instead —
+   the standard pattern for data tables on phones. No effect above 640px. */
+@media (max-width: 640px) {
+  ._memory-apikey-table-scroll {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* table-layout:fixed (Tea's own base style) splits whatever width is left
+     after the three fixed-width columns (createdAt/expiresAt 180px each +
+     actions 100px = 460px) evenly between the two `width:auto` columns
+     (Key ID, Key Prefix). At 620px that left only 80px each — too narrow
+     for either nowrap monospace value, so the two cells' overflow visually
+     bled into one another. 900px gives each ~220px; text-overflow is a
+     safety net for anything still longer than that. */
+  ._memory-apikey-table-scroll .tea-table {
+    min-width: 900px;
+  }
+
+  ._memory-apikey-table-scroll .tea-table__box td:nth-child(1),
+  ._memory-apikey-table-scroll .tea-table__box td:nth-child(2) {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* The endpoint cards were deliberately kept 2-up at every width above
+     (see the comment on ._memory-apikey-endpoints) — each column is only
+     ~½ the viewport on a phone, too narrow for a full proxy URL, so
+     word-break:break-all fragmented it into one syllable per line. Stack
+     to a single column instead; full viewport width is enough for the URL
+     to wrap sanely without the character-by-character break. */
+  ._memory-apikey-endpoints {
+    grid-template-columns: 1fr;
+  }
+}

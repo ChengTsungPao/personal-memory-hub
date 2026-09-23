@@ -196,6 +196,10 @@ export default function ApiKeyPanel() {
 
       {/* ===== Key 列表：key_id / key_prefix / 创建时间 + 操作 ===== */}
       <Card>
+        {/* 移动端：脱敏 key 字符串是等宽长串，表格没有响应式变体——不勉强
+            把它塞进窄屏（会被迫逐字折行），改用横向滚动，跟原生表格 App
+            常见的做法一致。桌面宽度下这个容器不产生任何视觉差异。 */}
+        <div className="_memory-apikey-table-scroll">
         <Table
           verticalTop
           records={keys}
@@ -277,6 +281,7 @@ export default function ApiKeyPanel() {
             }),
           ]}
         />
+        </div>
       </Card>
 
       {/* ===== 接入指引 ===== */}
