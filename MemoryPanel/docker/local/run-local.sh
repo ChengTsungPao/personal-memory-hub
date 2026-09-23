@@ -37,6 +37,7 @@ fi
 
 echo "Starting on :8123 ..."
 MSYS_NO_PATHCONV=1 docker run -d --name team-memory-control-local \
+  --restart unless-stopped \
   --add-host=host.docker.internal:host-gateway \
   -p 8123:8123 \
   -e METADATA_INSTANCES_CONFIG=/app/config/metadata-instances.json \
