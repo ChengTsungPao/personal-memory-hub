@@ -11,11 +11,22 @@
  * (a subscription-backed token from `claude setup-token`, NOT an API key).
  * MemoryCore never knows the difference.
  *
- * Scope: L1 extraction only (enableTools:false, single system+user prompt,
- * no tool calls). L2 scene extraction and L3 persona generation run with
- * enableTools:true and need real OpenAI function-calling passthrough, which
- * this proxy does not implement — a `tools` field in the request is refused
- * with a clear error rather than silently mishandled.
+ * Tool-calling (L2 scene extraction, L3 persona generation): MemoryCore's AI
+ * SDK sends real OpenAI-protocol `tools` + expects `tool_calls` back, then
+ * executes them ITSELF (sandboxed read/write/edit against its own
+ * workspaceDir, which this proxy has no filesystem access to — it's inside
+ * the memory-core container). So this proxy can't just let `claude -p` use
+ * its own native Read/Write/Edit tools directly; instead every native tool
+ * is disallowed, and a system-prompt addendum tells the model to emit
+ * `{"tool_call": {"name":..., "arguments":{...}}}` as its entire response
+ * when it wants to call one instead of actually calling anything. That
+ * gets translated into a real OpenAI `tool_calls` response; MemoryCore
+ * executes it for real and sends the result back as a `role:"tool"`
+ * message, which this proxy resumes the *same* `claude -p` session with
+ * (`--resume <session-id>`, verified to retain context across calls) so
+ * the model can see the result and decide its next move. `toolSessions`
+ * (in-memory, proxy-process-lifetime) maps each fabricated tool_call id to
+ * the real claude session id it belongs to.
  *
  * CLAUDE_CONFIG_DIR is pointed at ./claude-config (isolated, empty of hooks/
  * MCP servers/CLAUDE.md) so these calls never touch the user's real
@@ -134,17 +145,72 @@ function extractSystemAndPrompt(messages) {
   return { system: systemParts.join("\n\n"), prompt: userParts[userParts.length - 1] ?? "" };
 }
 
-function runClaude({ system, prompt, model }) {
+// ============================
+// Tool-calling emulation (L2/L3)
+// ============================
+
+/** fabricated tool_call id -> real `claude -p` session id it belongs to. */
+const toolSessions = new Map();
+
+function buildToolSystemPromptAddendum(tools) {
+  const lines = (tools ?? [])
+    .filter((t) => t.type === "function" && t.function)
+    .map((t) => {
+      const f = t.function;
+      return `- ${f.name}(${JSON.stringify(f.parameters ?? {})}): ${f.description ?? ""}`;
+    });
+  return [
+    "",
+    "--- TOOL USE PROTOCOL ---",
+    "Ignore any tools that appear to be available to you in this runtime (ListAgents, ScheduleWakeup, ToolSearch, or " +
+    "anything else) — none of them are relevant here and none of them can accomplish this task. Do not call any of " +
+    "them, do not search for other tools, and do not explain that a tool is missing. The ONLY way to affect the " +
+    "outside world in this task is the plain-text JSON protocol described below — nothing else you might notice " +
+    "being available actually does anything for this task.",
+    "",
+    "You need these tools, which do not exist as real callable functions — you invoke them purely by writing JSON, " +
+    "as specified below. Available tools, as name(JSON schema): description:",
+    ...lines,
+    "",
+    "To call exactly ONE tool, your ENTIRE response must be a single JSON object and nothing else — no markdown fencing, no explanation before or after:",
+    '{"tool_call": {"name": "<tool name>", "arguments": { ...matching that tool\'s schema... }}}',
+    "You will be told the tool's result in the next turn, after which you may call another tool the same way, or, once you have everything you need, give your final answer as plain text (no JSON, no wrapper) — exactly the format the rest of these instructions describe.",
+  ].join("\n");
+}
+
+/** Returns {name, arguments} if `text` is (only) a tool-call JSON object, else null. */
+function tryParseToolCall(text) {
+  const trimmed = text.trim();
+  if (!trimmed.startsWith("{")) return null;
+  let parsed;
+  try {
+    parsed = JSON.parse(trimmed);
+  } catch {
+    return null;
+  }
+  const call = parsed?.tool_call;
+  if (!call || typeof call.name !== "string" || typeof call.arguments !== "object") return null;
+  return call;
+}
+
+function runClaude({ system, prompt, model, resumeSessionId }) {
   return new Promise((resolve, reject) => {
     const args = [
       "-p", prompt,
-      "--system-prompt", system,
       "--output-format", "json",
       "--model", model,
       "--strict-mcp-config",   // don't load the user's real MCP servers
       "--restricted",          // no Bash/PowerShell/REPL/code-exec tools, no WebFetch
-      "--disallowed-tools", "WebSearch",
+      // Tool-calling mode disallows Claude's OWN file tools too: MemoryCore's
+      // AI SDK is the one meant to execute reads/writes, against its own
+      // workspaceDir this proxy can't see — see file header.
+      "--disallowed-tools", "WebSearch Read Write Edit Glob Grep Task",
     ];
+    if (resumeSessionId) {
+      args.push("--resume", resumeSessionId);
+    } else {
+      args.push("--system-prompt", system);
+    }
 
     const child = spawn("claude", args, {
       cwd: WORKDIR,
@@ -200,6 +266,35 @@ function openAiResponse({ model, text, usage }) {
     model,
     choices: [
       { index: 0, message: { role: "assistant", content: text }, finish_reason: "stop" },
+    ],
+    usage: {
+      prompt_tokens: usage?.input_tokens ?? 0,
+      completion_tokens: usage?.output_tokens ?? 0,
+      total_tokens: (usage?.input_tokens ?? 0) + (usage?.output_tokens ?? 0),
+    },
+  };
+}
+
+function openAiToolCallResponse({ model, name, args, usage, sessionId }) {
+  const callId = `call_${crypto.randomUUID()}`;
+  toolSessions.set(callId, sessionId);
+  return {
+    id: `chatcmpl-${crypto.randomUUID()}`,
+    object: "chat.completion",
+    created: Math.floor(Date.now() / 1000),
+    model,
+    choices: [
+      {
+        index: 0,
+        message: {
+          role: "assistant",
+          content: null,
+          tool_calls: [
+            { id: callId, type: "function", function: { name, arguments: JSON.stringify(args) } },
+          ],
+        },
+        finish_reason: "tool_calls",
+      },
     ],
     usage: {
       prompt_tokens: usage?.input_tokens ?? 0,
@@ -327,28 +422,40 @@ const server = http.createServer(async (req, res) => {
     return res.end(JSON.stringify(errBody));
   }
 
-  if (Array.isArray(body.tools) && body.tools.length > 0) {
-    const { status, body: errBody } = openAiError(
-      501,
-      "claude-llm-proxy only supports plain text completion (L1 extraction). " +
-      "This request included `tools`, meaning it's an enableTools:true call (L2/L3) — not supported here.",
-    );
-    res.writeHead(status, { "content-type": "application/json" });
-    return res.end(JSON.stringify(errBody));
+  const model = body.model || DEFAULT_MODEL;
+  const startedAt = Date.now();
+  const hasTools = Array.isArray(body.tools) && body.tools.length > 0;
+  const lastMessage = (body.messages ?? [])[(body.messages ?? []).length - 1];
+  const isToolContinuation = hasTools && lastMessage?.role === "tool";
+
+  let system, prompt, resumeSessionId;
+
+  if (isToolContinuation) {
+    const sid = toolSessions.get(lastMessage.tool_call_id);
+    if (!sid) {
+      const { status, body: errBody } = openAiError(
+        409,
+        `no known claude session for tool_call_id ${lastMessage.tool_call_id} — proxy was likely restarted mid-conversation`,
+      );
+      res.writeHead(status, { "content-type": "application/json" });
+      return res.end(JSON.stringify(errBody));
+    }
+    resumeSessionId = sid;
+    prompt = typeof lastMessage.content === "string" ? lastMessage.content : JSON.stringify(lastMessage.content);
+  } else {
+    const extracted = extractSystemAndPrompt(body.messages);
+    prompt = extracted.prompt;
+    system = hasTools ? extracted.system + buildToolSystemPromptAddendum(body.tools) : extracted.system;
   }
 
-  const { system, prompt } = extractSystemAndPrompt(body.messages);
   if (!prompt) {
     const { status, body: errBody } = openAiError(400, "no user message found in request");
     res.writeHead(status, { "content-type": "application/json" });
     return res.end(JSON.stringify(errBody));
   }
 
-  const model = body.model || DEFAULT_MODEL;
-  const startedAt = Date.now();
-
   try {
-    const result = await runClaude({ system, prompt, model });
+    const result = await runClaude({ system, prompt, model, resumeSessionId });
     logCall({
       ts: startedAt,
       model,
@@ -357,8 +464,17 @@ const server = http.createServer(async (req, res) => {
       promptTokens: result.usage?.input_tokens ?? 0,
       completionTokens: result.usage?.output_tokens ?? 0,
     });
+
+    const toolCall = hasTools ? tryParseToolCall(result.result ?? "") : null;
+    const responseBody = toolCall
+      ? openAiToolCallResponse({
+          model, name: toolCall.name, args: toolCall.arguments,
+          usage: result.usage, sessionId: result.session_id,
+        })
+      : openAiResponse({ model, text: result.result ?? "", usage: result.usage });
+
     res.writeHead(200, { "content-type": "application/json" });
-    res.end(JSON.stringify(openAiResponse({ model, text: result.result ?? "", usage: result.usage })));
+    res.end(JSON.stringify(responseBody));
   } catch (err) {
     console.error("[claude-llm-proxy] request failed:", err.message);
     logCall({ ts: startedAt, model, durationMs: Date.now() - startedAt, costUsd: 0, error: err.message });

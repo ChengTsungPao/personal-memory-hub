@@ -129,9 +129,10 @@ export function LlmBackendCard() {
       </div>
       {status?.mode !== 'qwen' && (
         <p className="guide-llm-backend-warning">
-          ⚠ Claude 訂閱模式目前只支援 L1 抽取（純文字）——L2 場景抽取、L3 人格生成會失敗，直到補上
-          tool-calling 支援或切回 Qwen。Knowledge wiki 摘要不受影響（它有自己獨立的 LLM
-          綁定，不跟著這裡切換）。
+          ⓘ Claude 訂閱模式下，L2 場景抽取、L3 人格生成靠 proxy 自己模擬 tool-calling（請模型輸出
+          JSON 表示要呼叫的工具，proxy 再轉成標準格式）運作——機制已驗證可行，但還沒在正式 pipeline
+          的即時觸發上實際跑過，遇到問題請切回 Qwen。Knowledge wiki 摘要不受影響（它有自己獨立的
+          LLM 綁定，不跟著這裡切換）。
         </p>
       )}
       {error && <p className="guide-llm-backend-error">{error}</p>}
