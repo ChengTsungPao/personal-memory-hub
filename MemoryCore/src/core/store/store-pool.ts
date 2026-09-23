@@ -3,15 +3,9 @@
  *
  * 双模式支持:
  *   - standalone: 使用 SQLite 本地存储 (每个 instanceId 一个 SQLite 文件)
- *   - service: 使用 TCVDB 向量数据库 (每个 instanceId 一个远程 VDB 连接)
- *
- * 与 InstanceConfigProvider 配合:
- *   1. 请求到达时, 从 InstanceConfigProvider 获取该 instanceId 的 VDB 配置
- *   2. 用 VDB 配置创建/复用 Store 实例
- *   3. 池化管理, 避免重复创建连接
+ *   - mongoConfig 存在时: 使用 MongoDB (每个 instanceId 一个远程连接)
  *
  * standalone 模式下:
- *   - VdbConfig 为空或来自环境变量 → 创建 SQLite Store
  *   - 固定一个 "default" instanceId, 行为与原 createStoreBundle 一致
  */
 
@@ -22,8 +16,6 @@ import type { IMemoryStore, StoreLogger } from "./types.js";
 import type { EmbeddingService } from "./embedding.js";
 import { createEmbeddingService, NoopEmbeddingService } from "./embedding.js";
 import { VectorStore } from "./sqlite/memory-store.js";
-import { TcvdbMemoryStore } from "./tcvdb/memory-store.js";
-import { TcvdbSkillStore } from "./tcvdb/skill-store.js";
 import { MongoMemoryStore } from "./mongodb/memory-store.js";
 import { MongoSkillStore } from "./mongodb/skill-store.js";
 import { getSharedMongoClientPool } from "./mongodb/client-pool.js";
@@ -60,7 +52,7 @@ interface Logger {
   error: (message: string) => void;
 }
 
-export type StoreMode = "sqlite" | "tcvdb" | "mongodb";
+export type StoreMode = "sqlite" | "mongodb";
 
 export interface KafkaMetricOptions {
   /** Kafka Broker 列表 (逗号分隔或数组) */
@@ -171,25 +163,21 @@ export class StorePool {
   /**
    * 获取指定 instanceId 对应的 Store 实例
    *
-   * - standalone (sqlite): vdbConfig 可以为 null, 创建 SQLite Store
-   * - service (tcvdb): 根据 vdbConfig 创建 TCVDB Store
+   * - standalone (sqlite): 创建 SQLite Store
+   * - mongoConfig 存在时: 创建 MongoDB Store
    */
   async getStore(
     instanceId: string,
-    vdbConfig: VdbConfig | null,
+    _vdbConfig: VdbConfig | null,
     mongoConfig?: MongoConfig | null,
   ): Promise<PooledStore> {
     const now = Date.now();
-    // D11: backend selected per-instance from the config actually delivered —
-    // mongoConfig present → mongodb; else tcvdb when in tcvdb mode with a vdb;
-    // else sqlite. `mode` is the process default that drives which config the
-    // caller resolves, but the presence check is authoritative here.
-    const backend: StoreMode = mongoConfig
-      ? "mongodb"
-      : (this.mode === "tcvdb" && vdbConfig ? "tcvdb" : "sqlite");
+    // _vdbConfig 参数保留是为了不 churn 调用方签名（instance-config-provider 等
+    // 仍会解析出这个值），但已不再有对应实现 —— 只有 mongoConfig 存在时走 mongodb，
+    // 否则一律 sqlite。
+    const backend: StoreMode = mongoConfig ? "mongodb" : "sqlite";
     const fingerprint =
       backend === "mongodb" && mongoConfig ? this.computeMongoFingerprint(mongoConfig)
-      : backend === "tcvdb" && vdbConfig ? this.computeFingerprint(vdbConfig)
       : `sqlite:${instanceId}`;
     const cached = this.pool.get(instanceId);
 
@@ -213,7 +201,6 @@ export class StorePool {
     // 创建新 Store
     const pooledStore =
       backend === "mongodb" && mongoConfig ? this.createMongoStore(mongoConfig)
-      : backend === "tcvdb" && vdbConfig ? this.createTcvdbStore(vdbConfig)
       : this.createSqliteStore(instanceId);
 
     this.pool.set(instanceId, {
@@ -224,7 +211,6 @@ export class StorePool {
 
     const storeDesc =
       backend === "mongodb" && mongoConfig ? `mongodb ${mongoConfig.endpoint} / ${mongoConfig.database}`
-      : backend === "tcvdb" && vdbConfig ? `${vdbConfig.url} / ${vdbConfig.database}`
       : `sqlite @ ${this.getSqlitePath(instanceId)}`;
     this.logger.info(
       `${TAG} Created ${backend} store for ${instanceId}: ${storeDesc} (pool size: ${this.pool.size})`,
@@ -328,14 +314,15 @@ export class StorePool {
   has(instanceId: string): boolean { return this.pool.has(instanceId); }
 
   /**
-   * 获取指定 instanceId 的 Skill Store (TCVDB).
+   * 获取指定 instanceId 的 Skill Store.
    *
-   * 与 getStore() 使用相同的 VDB 实例，只是不同的 Collection ({db}_skills)。
    * Skill store 有独立缓存 (skillStoreCache)，不受 Memory store 池化管理影响。
+   * 只支持 mongoConfig（mongodb 后端）；`vdbConfig` 参数保留只是为了不 churn
+   * 调用方签名，已没有对应实现。
    */
   async getSkillStore(
     instanceId: string,
-    vdbConfig?: VdbConfig | null,
+    _vdbConfig?: VdbConfig | null,
     mongoConfig?: MongoConfig | null,
   ): Promise<ISkillStore> {
     const key = `skill:${instanceId}`;
@@ -363,60 +350,10 @@ export class StorePool {
       return mongoStore;
     }
 
-    if (!vdbConfig) {
-      throw new Error(`${TAG} getSkillStore(${instanceId}) requires a vdbConfig (tcvdb) or mongoConfig (mongodb)`);
-    }
-
-    const store = new TcvdbSkillStore({
-      url: vdbConfig.url,
-      username: vdbConfig.user,
-      apiKey: vdbConfig.apiKey,
-      database: vdbConfig.database,
-      embeddingModel: this.memoryCfg.tcvdb?.embeddingModel ?? "bge-large-zh",
-      timeout: this.memoryCfg.tcvdb?.timeout ?? 10000,
-      logger: this.logger as StoreLogger,
-      bm25Encoder: this.sharedBm25Encoder,
-    });
-    store.init();
-    this.skillStoreCache.set(key, store);
-    this.skillStoreAccessTimes.set(key, Date.now());
-    this.logger.info(`${TAG} Created skill store for ${instanceId}: ${vdbConfig.url}/${vdbConfig.database} (cached: ${this.skillStoreCache.size})`);
-    return store;
+    throw new Error(`${TAG} getSkillStore(${instanceId}) requires mongoConfig (mongodb) — no other skill store backend is available`);
   }
 
   private skillStoreCache = new Map<string, ISkillStore>();
-
-  // ════════════════════════════════════════════════════════
-  // Internal — TCVDB Store
-  // ════════════════════════════════════════════════════════
-
-  private createTcvdbStore(vdbConfig: VdbConfig): PooledStore {
-    // [DEBUG] 本地调试用: 公网 HTTPS 连接 VDB 时需要 CA 证书。
-    // 内网部署走 HTTP 80 端口无需此逻辑。
-    // 通过环境变量 VDB_CA_PEM_PATH 指定 PEM 文件路径。
-    const caPemPath = vdbConfig.url.startsWith("https://")
-      ? (process.env.VDB_CA_PEM_PATH || undefined)
-      : undefined;
-
-    const store = new TcvdbMemoryStore({
-      url: vdbConfig.url,
-      username: vdbConfig.user,
-      apiKey: vdbConfig.apiKey,
-      database: vdbConfig.database,
-      embeddingEnabled: this.memoryCfg.tcvdb?.embeddingEnabled,
-      embeddingModel: this.memoryCfg.tcvdb?.embeddingModel ?? "bge-large-zh",
-      timeout: this.memoryCfg.tcvdb?.timeout ?? 10000,
-      caPemPath,
-      logger: this.logger as StoreLogger,
-      bm25Encoder: this.sharedBm25Encoder ?? undefined,
-    });
-
-    return {
-      store,
-      embedding: new NoopEmbeddingService() as unknown as EmbeddingService,
-      bm25Encoder: this.sharedBm25Encoder,
-    };
-  }
 
   // ════════════════════════════════════════════════════════
   // Internal — MongoDB Store
@@ -498,10 +435,6 @@ export class StorePool {
   // ════════════════════════════════════════════════════════
   // Internal — Common
   // ════════════════════════════════════════════════════════
-
-  private computeFingerprint(cfg: VdbConfig): string {
-    return `tcvdb:${cfg.url}|${cfg.database}|${cfg.apiKey}`;
-  }
 
   private async closeEntry(instanceId: string, entry: PoolEntry): Promise<void> {
     // CR-5 mitigation: 立刻从 pool 移除 (新请求拿不到这个 entry, 会创建一个新 store),

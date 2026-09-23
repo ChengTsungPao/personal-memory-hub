@@ -5,9 +5,8 @@
  *
  * Fallback semantics (定稿 2026-08-31):
  * - no explicit override → per-deploy-mode default
- *   (standalone: sqlite+local; service: tcvdb+cos — byte-identical to today's
- *   behavior, N1);
- * - source throws / returns nothing → fail-fast (resolveVdb/resolveMongo/
+ *   (standalone: sqlite+local; service: mongodb+cos);
+ * - source throws / returns nothing → fail-fast (resolveMongo/
  *   resolveCos already throw or return null; never silently fall to sqlite).
  *
  * `storeMode` / `fileStore` are the process-level explicit overrides
@@ -61,12 +60,10 @@ export class LocalBackendResolver implements BackendResolver {
 
   private async resolveDb(instanceId: string): Promise<DbChoice> {
     const kind: DbKind =
-      this.deps.storeMode ?? (this.deps.deployMode === "service" ? "tcvdb" : "sqlite");
+      this.deps.storeMode ?? (this.deps.deployMode === "service" ? "mongodb" : "sqlite");
     switch (kind) {
       case "sqlite":
         return { kind, conn: null };
-      case "tcvdb":
-        return { kind, conn: await this.deps.source.resolveVdb(instanceId) };
       case "mongodb":
         return { kind, conn: await this.deps.source.resolveMongo(instanceId) };
     }

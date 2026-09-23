@@ -5,14 +5,18 @@
     "On Windows use forward slashes, e.g. C:/Users/you/personal-memory-hub.",
     "Every TDAI_* value here is non-secret routing/identity config; the",
     "gateway token, if your deployment sets one, belongs in your shell",
-    "environment rather than this file."
+    "environment rather than this file.",
+    "TDAI_AGENT_ID is deliberately omitted: leaving it unset lets each hook",
+    "call auto-derive it from the project's git identity (see README.md",
+    "'Memory isolation: why agent_id is per-project, not per-session').",
+    "Only add it back here if you want every project to share one fixed",
+    "agent_id."
   ],
 
   "env": {
     "TDAI_ENDPOINT": "http://127.0.0.1:8420",
     "TDAI_SERVICE_ID": "default",
     "TDAI_TEAM_ID": "default",
-    "TDAI_AGENT_ID": "default",
     "TDAI_USER_ID": "default"
   },
 

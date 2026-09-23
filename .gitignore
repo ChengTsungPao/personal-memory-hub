@@ -10,6 +10,12 @@ workspace/
 # Test caches
 __tests__/soak/.model-cache/
 
+# claude-llm-proxy runtime state (isolated claude config/session + call log)
+deploy/claude-llm-proxy/claude-config/
+deploy/claude-llm-proxy/workdir/*
+!deploy/claude-llm-proxy/workdir/.gitkeep
+deploy/claude-llm-proxy/calls.jsonl
+
 # Python cache
 __pycache__/
 *.pyc
@@ -17,8 +23,6 @@ __pycache__/
 *.pyd
 
 # Migration build output
-scripts/export-tencent-vdb/dist/
-scripts/migrate-sqlite-to-tcvdb/dist/
 scripts/read-local-memory/dist/
 
 # Root-level build output (not used at runtime, not published)

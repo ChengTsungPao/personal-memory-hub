@@ -25,19 +25,19 @@ async function readStdin() {
 }
 
 async function main() {
-  const cfg = loadConfig();
-
   const raw = await readStdin();
-  if (!raw.trim()) return debugLog(cfg, "no stdin payload");
+  if (!raw.trim()) return;
 
   let payload;
   try {
     payload = JSON.parse(raw);
   } catch {
-    return debugLog(cfg, "stdin was not JSON");
+    return;
   }
 
   const sessionId = payload.session_id;
+  const cfg = loadConfig(payload.cwd, sessionId);
+
   const transcriptPath = payload.transcript_path;
   if (!sessionId || !transcriptPath) {
     return debugLog(cfg, "payload missing session_id or transcript_path");

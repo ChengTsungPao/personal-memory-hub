@@ -75,7 +75,7 @@ Point it at a local Ollama and it costs nothing:
 |---|:---:|:---:|
 | L0 conversation capture | works | works |
 | Keyword search (BM25 / FTS) | works | works |
-| Vector search | **off** in the official deploy script (`embedding: provider: none`) — see *Verified behaviour* | same |
+| Vector search | on — `bge-m3` via Ollama (see below) | same |
 | L3 persona | readable + writable (can be created), **not auto-generated** | auto-generated |
 | L2 scenario blocks | readable, and existing ones editable — but **cannot be created**: `/v3/scenario/write` refuses unknown paths (404), so only the pipeline makes new blocks | works |
 | L1 atoms | **unavailable** — no create endpoint exists; only the pipeline makes them | works |
@@ -236,13 +236,71 @@ settings file, so no secret is ever committed.
 | `TDAI_ENDPOINT` | `http://127.0.0.1:8420` | MemoryCore base URL |
 | `TDAI_SERVICE_ID` | `default` | Instance id (`x-tdai-service-id`) |
 | `TDAI_KERNEL_TOKEN` | *(empty → sends `Bearer local`)* | Layer-1 gateway token. The gateway rejects a request with **no** `Authorization` header even when it has no apiKey — it just doesn't check the value — so an empty token still sends a placeholder, as MemoryProxy does |
-| `TDAI_TEAM_ID` | `default` | Isolation triple — v3 requires team + agent + user. **Set these to the ids the panel shows** (e.g. `team-…`, `agt-…`, `usr-…`): memory written under `default` is stored fine but is invisible in the panel, which browses by its own ids |
-| `TDAI_AGENT_ID` | `default` | |
+| `TDAI_TEAM_ID` | `default` | Isolation triple — v3 requires team + agent + user. **Set this to the id the panel shows** (e.g. `team-…`): memory written under `default` is stored fine but is invisible in the panel, which browses by its own ids |
+| `TDAI_AGENT_ID` | *(auto-derived, see below — set this only to force one fixed value)* | |
 | `TDAI_USER_ID` | `default` | |
 | `TDAI_TASK_ID` | *(unset)* | Optional; omitted from requests when empty |
 | `TDAI_TIMEOUT_MS` | `8000` | Per-request timeout |
 | `TDAI_STATE_DIR` | `~/.memory-tdai/claude-code` | Where capture cursors live |
 | `TDAI_DEBUG` | *(unset)* | `1` logs hook diagnostics to stderr |
+
+### Memory isolation: why `agent_id` is per-project, not per-session
+
+**What `team_id` + `agent_id` actually mean.** Every layer of memory (L0
+conversations, L1 atoms, L2 scene blocks, L3 persona) is partitioned by the
+`(team_id, agent_id)` pair — see `MemoryCore/src/metadata/utils/chat-memory-asset.ts`,
+which builds the storage key as literally `chat_memory-{team_id}-{agent_id}`.
+This is **not** one bucket per chat session. It's one continuously-accumulating
+memory per *agent identity* — the whole point of the L1→L2→L3 pipeline is to
+synthesize many conversations, over time, into one coherent picture (L3 persona
+regeneration alone triggers every 50 processed conversations; that only makes
+sense across a large number of sessions). In the upstream multi-tenant design,
+one `agent_id` is meant to represent one specific bot/assistant a team
+registers (e.g. "our customer-support bot"), and everyone's conversations with
+that one bot feed its one growing memory.
+
+**The mistake we made setting this up.** The initial wiring pinned
+`TDAI_TEAM_ID`/`TDAI_AGENT_ID` to one fixed pair in `~/.claude/settings.json`,
+so *every* Claude Code session on the machine — regardless of which project it
+was in — wrote into the same `agent_id`. This isn't just "everything shows up
+under one name in the panel" — it actively degraded memory quality: L2 scene
+blocks from completely unrelated projects (this repo, an unrelated LaTeX
+project, an unrelated input-method side project, Docker networking notes, …)
+all landed in the same bucket, and L3 persona regeneration was then asked to
+synthesize one coherent "Team Operating Doctrine" out of all of them at once —
+producing an incoherent mashup of unrelated rules (image-mirror policy next to
+UAC-authorization rules next to an IME's UI design decisions) that then gets
+injected as `additionalContext` into the *next* unrelated session's
+`SessionStart`, regardless of what that session is actually about.
+
+Naively fixing this by keying on **session_id instead** would be worse, not
+better: session_id changes every time you open `claude`, so every session
+would become an isolated island that can never see memory from any earlier
+session — the L1/L2/L3 pipeline would have nothing to accumulate, defeating
+the entire point of long-term memory.
+
+**The actual fix: derive `agent_id` from the project's git identity.**
+`lib/config.mjs`'s `loadConfig(cwd, sessionId)` now derives `agent_id`
+automatically (only when `TDAI_AGENT_ID` isn't set explicitly), in order:
+
+1. `git remote get-url origin`, hashed — stable across clones/worktrees of the
+   same repo.
+2. The repo's root commit hash (`git rev-list --max-parents=0 HEAD`) when
+   there's no `origin` remote — unlike the working-directory path, this stays
+   identical across `git worktree` checkouts of the same history, which a
+   path-based key would incorrectly split apart.
+3. `agt-{sessionId}` when `cwd` isn't inside a git repo at all — a one-off
+   chat with no project has no stable identity to accumulate memory around
+   anyway, so each such chat gets its own small bucket instead of dumping into
+   one shared catch-all that would pollute every other unrelated one-off chat.
+4. Literal `"default"` only when neither `cwd` nor `sessionId` is available
+   (e.g. the MCP server, a long-lived process with no per-call session id,
+   running outside any git repo).
+
+The two hooks pass `payload.cwd` and `payload.session_id` from the hook's
+stdin payload; the MCP server (a persistent process) uses its own
+`process.cwd()` at launch. `team_id` and `user_id` stay fixed — only
+`agent_id` (which project) varies.
 
 ### 5. Register the hooks
 

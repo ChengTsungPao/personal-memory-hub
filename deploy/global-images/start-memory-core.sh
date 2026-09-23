@@ -121,6 +121,20 @@ fi
 pull_image "$MEMORY_CORE_IMAGE"
 rm_container_if_exists "$CONTAINER"
 
+# ── 向量嵌入（可选）── MEMORY_EMBEDDING_MODEL 未设时关闭（纯关键字检索）。
+# sendDimensions:false 是 bge-m3 等自托管模型的已知需求（见 MemoryCore/src/core/
+# store/embedding.ts 顶部注释：部分模型对未知的 dimensions 参数返回 400）。
+if [[ -n "${MEMORY_EMBEDDING_MODEL:-}" ]]; then
+  EMBEDDING_YAML="provider: openai
+    baseUrl: \"${MEMORY_EMBEDDING_BASE_URL:-}\"
+    apiKey: \"${MEMORY_EMBEDDING_API_KEY:-}\"
+    model: \"${MEMORY_EMBEDDING_MODEL}\"
+    dimensions: ${MEMORY_EMBEDDING_DIMENSIONS:-1024}
+    sendDimensions: false"
+else
+  EMBEDDING_YAML="provider: none"
+fi
+
 # ── 生成 gateway config.yaml，挂到容器 /data/config/tdai-gateway.yaml ──
 # 默认镜像里没 config，memory-core 走编译时的默认（skill / knowledge 模块关闭）。
 # 从 .env 里的 MEMORY_LLM_* 生成一份 standalone+skill 的最小配置。
@@ -178,7 +192,7 @@ memory:
   # 此处保持同值仅为可读性；插件/SDK 形态才读这个字段。
   storeBackend: ${MEMORY_CORE_STORE_MODE}
   embedding:
-    provider: none
+    ${EMBEDDING_YAML}
 
 # ── Skill 模块 ──
 skill:

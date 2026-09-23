@@ -12,9 +12,9 @@
  * process boundaries.
  */
 
-import type { CosConfig, MongoConfig, VdbConfig } from "../instance-config-provider.js";
+import type { CosConfig, MongoConfig } from "../instance-config-provider.js";
 
-export type DbKind = "sqlite" | "tcvdb" | "mongodb";
+export type DbKind = "sqlite" | "mongodb";
 
 /**
  * Env-surface vocabulary for `FILE_STORE_MODE` (两轴模型定稿 §5 映射的输入侧).
@@ -52,7 +52,6 @@ export type FsOthersKind = "local" | "cos" | "mongofs";
  */
 export type DbChoice =
   | { kind: "sqlite"; conn: null }
-  | { kind: "tcvdb"; conn: VdbConfig }
   | { kind: "mongodb"; conn: MongoConfig };
 
 export type FsOthersChoice =
@@ -76,7 +75,6 @@ export interface BackendResolution {
  * provider can be passed directly while tests substitute a fake.
  */
 export interface BackendConfigSource {
-  resolveVdb(instanceId: string): Promise<VdbConfig>;
   resolveMongo(instanceId: string): Promise<MongoConfig>;
   resolveCos(): Promise<CosConfig | null>;
 }

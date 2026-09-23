@@ -19,7 +19,6 @@ docker
 backup-*
 pnpm-lock.yaml
 install_hermes_ubuntu24.04_hongkong.sh
-scripts/migrate-sqlite-to-tcvdb
 scripts/sync-hermes-llm-to-tdai.sh
 dump.rdb
 vitest.config.ts

@@ -21,8 +21,6 @@ export function dbChoiceToStoreConfigs(db: DbChoice): StoreBackendConfigs {
   switch (db.kind) {
     case "mongodb":
       return { vdbConfig: null, mongoConfig: db.conn };
-    case "tcvdb":
-      return { vdbConfig: db.conn, mongoConfig: null };
     case "sqlite":
       return { vdbConfig: null, mongoConfig: null };
   }

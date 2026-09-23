@@ -20,6 +20,7 @@ import { getPanelSession } from '@/lib/panelSession';
 import { tea } from '@/lib/tea-bridge';
 import { CopyButton } from './CopyButton';
 import { MemCommands } from './MemCommands';
+import { LlmBackendCard } from './LlmBackendCard';
 import './style.css';
 
 type MainTab = 'quick' | 'practice' | 'commands';
@@ -345,6 +346,8 @@ export function GuidePage() {
         </div>
         <span className="guide-brand">{t('guide.brand')}</span>
       </header>
+
+      <LlmBackendCard />
 
       <nav className="guide-main-tabs" aria-label={t('guide.tabs.aria')}>
         <button

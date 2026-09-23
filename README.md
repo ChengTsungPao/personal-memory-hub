@@ -60,7 +60,10 @@ implementations, selected by `storeBackend` in config:
 | `sqlite` | SQLite + `sqlite-vec` + FTS5 | Default. Zero setup, single file, local only. |
 | `postgres` | PostgreSQL + `pgvector` + `tsvector` | **In development** — see the design notes below. One engine for vectors, full-text and relational data. |
 | `mongodb` | MongoDB | Server-side text search. |
-| `tcvdb` | Tencent Cloud VectorDB | Vendor-hosted vector store, inherited from upstream. |
+
+The upstream `tcvdb` (Tencent Cloud VectorDB) backend has been removed from
+this fork — the Postgres backend below is its replacement: one self-hosted
+engine covering the same surface, with no vendor-hosted vector store to run.
 
 Chinese text is pre-segmented with jieba at write time and stored as
 space-joined tokens, so every backend can use a plain whitespace tokenizer and

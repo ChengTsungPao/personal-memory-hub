@@ -888,6 +888,143 @@
   margin-bottom: 4px;
 }
 
+/* ===== LLM 抽取後端卡片 ===== */
+.guide-llm-backend {
+  margin-bottom: 20px;
+  padding: 16px 20px;
+  border: 1px solid var(--tea-color-border-primary-default);
+  border-radius: 10px;
+  background: var(--tea-color-bg-primary-default);
+}
+
+.guide-llm-backend-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.guide-llm-backend-head h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.guide-llm-backend-badge {
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.guide-llm-backend-badge.proxy {
+  background: var(--tea-color-bg-brand-default);
+  color: var(--tea-color-text-on-bg-brand-default);
+}
+
+.guide-llm-backend-badge.qwen {
+  background: var(--tea-color-bg-success-default, #e8f8f0);
+  color: var(--tea-color-text-success-default, #0abf5b);
+}
+
+.guide-llm-backend-badge.unknown {
+  background: var(--tea-color-bg-tertiary-default);
+  color: var(--tea-color-text-tertiary);
+}
+
+.guide-llm-backend-detail,
+.guide-llm-backend-unreachable {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: var(--tea-color-text-tertiary);
+  line-height: 18px;
+}
+
+.guide-llm-backend-switch {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.guide-llm-backend-switch button {
+  padding: 6px 14px;
+  border: 1px solid var(--tea-color-border-primary-default);
+  border-radius: 6px;
+  background: var(--tea-color-bg-primary-default);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.guide-llm-backend-switch button.active {
+  border-color: var(--tea-color-bg-brand-default);
+  background: var(--tea-color-bg-brand-default);
+  color: var(--tea-color-text-on-bg-brand-default);
+  cursor: default;
+}
+
+.guide-llm-backend-switch button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.guide-llm-backend-warning {
+  margin: 10px 0 0;
+  padding: 8px 12px;
+  border-radius: 6px;
+  background: #fff7e6;
+  color: #a35a00;
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.guide-llm-backend-error {
+  margin: 8px 0 0;
+  color: #e54545;
+  font-size: 12px;
+}
+
+.guide-llm-backend-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.guide-llm-backend-stat {
+  padding: 10px 12px;
+  border-radius: 6px;
+  background: var(--tea-color-bg-secondary-default);
+  text-align: center;
+}
+
+.guide-llm-backend-stat b {
+  display: block;
+  font-size: 15px;
+}
+
+.guide-llm-backend-stat small {
+  display: block;
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--tea-color-text-tertiary);
+}
+
+.guide-llm-backend-note {
+  margin: 10px 0 0;
+  font-size: 11px;
+  color: var(--tea-color-text-tertiary);
+  line-height: 16px;
+}
+
+@media (max-width: 640px) {
+  .guide-llm-backend-stats {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .guide-llm-backend-switch {
+    flex-direction: column;
+  }
+}
+
 /* ===== 引导回放 ===== */
 .guide-replay {
   display: flex;

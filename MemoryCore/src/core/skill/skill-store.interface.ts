@@ -23,7 +23,7 @@ import type {
 export type SkillErrorCode =
   | "SKILL_NAME_DUPLICATE"
   | "SKILL_NOT_FOUND"
-  // 并发 appendVersion 抢 head-flip CAS 失败（见 tcvdb/skill-store.ts）；
+  // 并发 appendVersion 抢 head-flip CAS 失败；
   // 对齐 skill-core 层同名码，toCoreError 直接透传。
   | "SKILL_VERSION_STALE";
 

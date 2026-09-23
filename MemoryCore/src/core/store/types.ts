@@ -11,8 +11,8 @@
  *    are expressed as capability flags so callers can gracefully degrade.
  * 3. **Fault-tolerant**: All methods return empty results or `false` on
  *    failure rather than throwing, unless explicitly documented otherwise.
- * 4. **Sync-first**: Matches current SQLite DatabaseSync usage. TCVDB backend
- *    adapts internally without changing these signatures.
+ * 4. **Sync-first**: Matches current SQLite DatabaseSync usage. Other backends
+ *    adapt internally without changing these signatures.
  */
 
 import type { MemoryRecord } from "../record/l1-writer.js";
@@ -252,7 +252,7 @@ export interface StoreCapabilities {
   vectorSearch: boolean;
   /** Whether FTS (full-text keyword) search is available. */
   ftsSearch: boolean;
-  /** Whether native hybrid search is supported (e.g., TCVDB hybridSearch). */
+  /** Whether native hybrid search is supported by the backend. */
   nativeHybridSearch: boolean;
   /** Whether the store supports sparse vectors (BM25 encoding). */
   sparseVectors: boolean;
@@ -295,8 +295,8 @@ export interface ProfileSyncRecord extends ProfileRecord {
 /**
  * Filter for profile row queries — shared by `countProfiles` and `queryProfiles`.
  *
- * `pathPrefix` matches `filename` by string prefix (Mongo `$regex ^prefix`,
- * TCVDB `startsWith`), which is what `IStorageBackend.listObjects` needs.
+ * `pathPrefix` matches `filename` by string prefix (Mongo `$regex ^prefix`),
+ * which is what `IStorageBackend.listObjects` needs.
  */
 export interface ProfileFilter {
   type?: ProfileRecord["type"];
@@ -521,7 +521,7 @@ export interface KnowledgeListResult {
  *
  * Implementations:
  * - `SqliteMemoryStore` (sqlite.ts) — local SQLite + sqlite-vec + FTS5
- * - `TcvdbMemoryStore` (tcvdb.ts) — Tencent Cloud VectorDB (future)
+ * - `MongoMemoryStore` (mongodb.ts) — server-side text search
  *
  * All methods are fault-tolerant: they return empty results or `false` on
  * failure rather than throwing, unless explicitly documented otherwise.

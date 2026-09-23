@@ -64,15 +64,16 @@ function renderScenarios(entries) {
 }
 
 async function main() {
-  const cfg = loadConfig();
-
   const raw = await readStdin();
   let payload = {};
   try {
     payload = raw.trim() ? JSON.parse(raw) : {};
   } catch {
-    debugLog(cfg, "stdin was not JSON; continuing with defaults");
+    // stdin was not JSON; continue with an empty payload (cwd-based agent_id
+    // derivation just falls back to "default" below).
   }
+
+  const cfg = loadConfig(payload.cwd, payload.session_id);
 
   if (SKIP_SOURCES.has(payload.source)) {
     return debugLog(cfg, `source=${payload.source}; memory already in context`);

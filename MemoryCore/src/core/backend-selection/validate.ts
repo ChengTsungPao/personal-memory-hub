@@ -22,12 +22,6 @@ export class BackendResolutionError extends Error {
 export function validateResolution(resolution: BackendResolution): void {
   const { db, fs } = resolution;
 
-  if (db.kind === "tcvdb" && !db.conn) {
-    throw new BackendResolutionError(
-      `db.kind="tcvdb" requires a VdbConfig conn — the config source returned nothing. ` +
-        `Check the instance's Shark delivery (or VDB_* env vars in local mode).`,
-    );
-  }
   if (db.kind === "mongodb" && !db.conn) {
     throw new BackendResolutionError(
       `db.kind="mongodb" requires a MongoConfig conn — the config source returned nothing. ` +
@@ -43,8 +37,7 @@ export function validateResolution(resolution: BackendResolution): void {
 
   // §5.1.1 + 两轴定稿（2026-09-02 收紧）: profile=rows maps files onto profile
   // rows, and mongodb is the only DB whose store implements the profile-row
-  // methods — sqlite has no rows to map, tcvdb has not implemented them (the
-  // assembly guard would fail-fast anyway). Reject both before assembly.
+  // methods — sqlite has no rows to map. Reject before assembly.
   if (fs.profile === "rows" && db.kind !== "mongodb") {
     throw new BackendCapabilityError({
       dbKind: db.kind,
