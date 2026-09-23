@@ -15,7 +15,7 @@ import type { ConversationMessage } from "../conversation/l0-recorder.js";
 export const EXTRACT_MEMORIES_SYSTEM_PROMPT = `你是专业的"情境切分与记忆提取专家"。
 你的任务是分析用户的对话，判断情境切换，并从中提取结构化的核心记忆（仅限 persona, episodic, instruction 三类）。
 
-**输出语言**：所有自由文本字段（\`scene_name\`、memory \`content\`）使用与用户消息相同的语言；JSON 字段名、枚举值、ISO 时间戳保持英文。
+**输出语言**：所有自由文本字段（\`scene_name\`、memory \`content\`）使用与用户消息相同的语言；JSON 字段名、枚举值、ISO 时间戳保持英文。若判定为中文，一律使用繁体中文（Traditional Chinese, zh-TW），严禁使用简体中文。
 
 ### 任务一：情境切分（Scene Segmentation）
 分析【待提取的新消息】，结合【上一个情境】，判断并输出当前对话的情境。
@@ -98,7 +98,9 @@ metadata 字段说明：
   }
 ]
 
-请严格按上述 JSON 数组格式输出，不要输出任何额外的 Markdown 代码块修饰符（如 \`\`\`json）或解释文本。`;
+请严格按上述 JSON 数组格式输出，不要输出任何额外的 Markdown 代码块修饰符（如 \`\`\`json）或解释文本。
+
+**中文强制要求**：若判定输出语言为中文，一律使用繁体中文（Traditional Chinese, zh-TW）书写，严禁使用简体中文。`;
 
 export type MemoryPromptMode = "chat" | "code";
 
@@ -107,7 +109,7 @@ export const EXTRACT_WORK_MEMORIES_SYSTEM_PROMPT = `你是专业的"工作情境
 
 本任务面向工作场合的团队协作场景。你应重点提取项目事实、任务进展、决策结论、工作方法、SOP、禁忌、设计思路、交付物等对团队后续协作和 Agent 执行有长期价值的信息。
 
-**输出语言**：所有自由文本字段（\`scene_name\`、memory \`content\`）使用与待提取消息主导语言相同的语言；JSON 字段名、枚举值、ISO 时间戳保持英文。
+**输出语言**：所有自由文本字段（\`scene_name\`、memory \`content\`）使用与待提取消息主导语言相同的语言；JSON 字段名、枚举值、ISO 时间戳保持英文。若判定为中文，一律使用繁体中文（Traditional Chinese, zh-TW），严禁使用简体中文。
 
 ---
 
@@ -369,7 +371,9 @@ metadata 字段说明：
   }
 ]
 
-请严格按上述 JSON 数组格式输出，不要输出任何额外的 Markdown 代码块修饰符（如 \`\`\`json）或解释文本。`;
+请严格按上述 JSON 数组格式输出，不要输出任何额外的 Markdown 代码块修饰符（如 \`\`\`json）或解释文本。
+
+**中文强制要求**：若判定输出语言为中文，一律使用繁体中文（Traditional Chinese, zh-TW）书写，严禁使用简体中文。`;
 
 export function getExtractMemoriesSystemPrompt(mode: MemoryPromptMode = "chat"): string {
   return mode === "code" ? EXTRACT_WORK_MEMORIES_SYSTEM_PROMPT : EXTRACT_MEMORIES_SYSTEM_PROMPT;
@@ -403,7 +407,7 @@ export function formatExtractionPrompt(params: {
     .map((m) => `[${m.id}] [${m.role}] [${new Date(m.timestamp).toISOString()}]: ${m.content}`)
     .join("\n\n");
 
-  return `**输出语言**：根据下方"待提取的新消息"中 user 发言的主导语言书写 \`scene_name\` 和 memory \`content\`。
+  return `**输出语言**：根据下方"待提取的新消息"中 user 发言的主导语言书写 \`scene_name\` 和 memory \`content\`。若判定为中文，一律使用繁体中文（Traditional Chinese, zh-TW），严禁使用简体中文。
 
 【上一个情境】：${previousSceneName}
 

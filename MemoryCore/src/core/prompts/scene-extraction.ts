@@ -49,7 +49,7 @@ export interface SceneExtractionPromptResult {
 function buildSceneSystemPrompt(maxScenes: number): string {
   return `# Memory Consolidation Architect
 
-**输出语言**：\`.md\` 场景文件的所有自然语言内容（文件名、章节标题、正文）使用与"New Memories List"中记忆相同的语言；META 字段名（created/updated/summary/heat）和 \`[DELETED]\` 等标记保持英文。模板中给出的中文章节标题（\`## 用户核心特征\` 等）作为结构骨架——非中文输出时请用目标语言的等价表达替换。
+**输出语言**：\`.md\` 场景文件的所有自然语言内容（文件名、章节标题、正文）使用与"New Memories List"中记忆相同的语言；META 字段名（created/updated/summary/heat）和 \`[DELETED]\` 等标记保持英文。模板中给出的中文章节标题（\`## 用户核心特征\` 等）作为结构骨架——非中文输出时请用目标语言的等价表达替换。若判定为中文，一律使用繁体中文（Traditional Chinese, zh-TW），严禁使用简体中文。
 
 ## 角色定义 (Role Definition)
 你是记忆整合架构师。你的目标是为用户构建一个"数字第二大脑"。你不仅仅是在记录数据，你更像是一位人类学家和心理学家，负责分析原始记忆，从中提取核心特征、捕捉隐性信号，并构建不断演变的叙事。
@@ -252,13 +252,15 @@ reason: 具体原因描述
    - 使用 **read** 读取需要更新的场景文件
    - 使用 **write** 创建新文件或**整体重写**已有场景文件
    - 使用 **edit** 对场景文件进行**局部更新**（如只更新某个章节）
-   - **删除文件**：使用 **write**(\`path\`=文件名, \`content\`='[DELETED]') 写入删除标记。系统会自动清理这些文件。**重要**：只有 \`[DELETED]\` 标记会触发系统清理。写入空字符串会被系统拒绝，写入 \`[ARCHIVE]\`、\`[CONSOLIDATED]\` 等标记**不会删除文件**，文件会继续占用场景配额。`;
+   - **删除文件**：使用 **write**(\`path\`=文件名, \`content\`='[DELETED]') 写入删除标记。系统会自动清理这些文件。**重要**：只有 \`[DELETED]\` 标记会触发系统清理。写入空字符串会被系统拒绝，写入 \`[ARCHIVE]\`、\`[CONSOLIDATED]\` 等标记**不会删除文件**，文件会继续占用场景配额。
+
+**中文强制要求**：若判定输出语言为中文，一律使用繁体中文（Traditional Chinese, zh-TW）书写，严禁使用简体中文。`;
 }
 
 function buildWorkSceneSystemPrompt(maxScenes: number): string {
   return `# Team Work Method Memory Consolidation Architect
 
-**输出语言**：\`.md\` 场景文件的所有自然语言内容（文件名、章节标题、正文）使用与 "New Memories List" 中记忆相同的语言；META 字段名（created/updated/summary/heat）和 \`[DELETED]\` 等标记保持英文。模板中的中文章节标题仅作为结构骨架，非中文输出时请用目标语言的等价表达替换。
+**输出语言**：\`.md\` 场景文件的所有自然语言内容（文件名、章节标题、正文）使用与 "New Memories List" 中记忆相同的语言；META 字段名（created/updated/summary/heat）和 \`[DELETED]\` 等标记保持英文。模板中的中文章节标题仅作为结构骨架，非中文输出时请用目标语言的等价表达替换。若判定为中文，一律使用繁体中文（Traditional Chinese, zh-TW），严禁使用简体中文。
 
 ## 角色定义 (Role Definition)
 
@@ -522,7 +524,9 @@ reason: 具体原因描述
 - 使用 **read** 读取需要更新的场景文件。
 - 使用 **write** 创建新文件或整体重写已有场景文件。
 - 使用 **edit** 对场景文件进行局部更新。
-- **删除文件**：使用 **write**(\`path\`=文件名, \`content\`='[DELETED]') 写入删除标记。系统会自动清理这些文件。**重要**：只有 \`[DELETED]\` 标记会触发系统清理。写入空字符串会被系统拒绝，写入 \`[ARCHIVE]\`、\`[CONSOLIDATED]\` 等标记不会删除文件。`;
+- **删除文件**：使用 **write**(\`path\`=文件名, \`content\`='[DELETED]') 写入删除标记。系统会自动清理这些文件。**重要**：只有 \`[DELETED]\` 标记会触发系统清理。写入空字符串会被系统拒绝，写入 \`[ARCHIVE]\`、\`[CONSOLIDATED]\` 等标记不会删除文件。
+
+**中文强制要求**：若判定输出语言为中文，一律使用繁体中文（Traditional Chinese, zh-TW）书写，严禁使用简体中文。`;
 }
 
 function getSceneSystemPrompt(maxScenes: number, promptMode: MemoryPromptMode = "chat"): string {
@@ -552,7 +556,7 @@ export function buildSceneExtractionPrompt(params: SceneExtractionPromptParams):
     ? `### 📁 已有场景文件清单（仅以下文件可 read）\n${existingSceneFiles.map((f) => `- \`${f}\``).join("\n")}\n`
     : `### 📁 已有场景文件清单\n（当前无已有场景文件）\n`;
 
-  const userPrompt = `**输出语言**：场景文件内容使用下方 New Memories List 中记忆的主导语言。
+  const userPrompt = `**输出语言**：场景文件内容使用下方 New Memories List 中记忆的主导语言。若判定为中文，一律使用繁体中文（Traditional Chinese, zh-TW），严禁使用简体中文。
 ${warningSection}
 ### 1️⃣ New Memories List
 ${memoriesJson}

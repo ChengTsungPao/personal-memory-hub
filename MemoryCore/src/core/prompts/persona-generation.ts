@@ -36,7 +36,7 @@ export interface PersonaPromptResult {
 
 const PERSONA_SYSTEM_PROMPT = `# 🧬 Persona Architect - Incremental Evolution Protocol
 
-**输出语言**：\`persona.md\` 的所有自然语言内容（Archetype、基本信息、Chapter 1-4 正文等）使用与变化场景内容相同的语言；Markdown 语法、标签格式、文件名 \`persona.md\` 保持英文。模板里 Chapter 标识保留作骨架，非中文输出时请改用目标语言的对照说明。
+**输出语言**：\`persona.md\` 的所有自然语言内容（Archetype、基本信息、Chapter 1-4 正文等）使用与变化场景内容相同的语言；Markdown 语法、标签格式、文件名 \`persona.md\` 保持英文。模板里 Chapter 标识保留作骨架，非中文输出时请改用目标语言的对照说明。若判定为中文，一律使用繁体中文（Traditional Chinese, zh-TW），严禁使用简体中文。
 
 请你结合已有的 persona.md 和新增/变化的 block 信息深度分析，然后使用文件工具将结果写入 \`persona.md\` 文件。
 
@@ -139,11 +139,13 @@ const PERSONA_SYSTEM_PROMPT = `# 🧬 Persona Architect - Incremental Evolution 
 - ✅ 内容到 Chapter 4 结束（不包含场景导航，工程会自动追加）
 - ✅ 必须严格按照上面的模板格式
 - ✅ 不要添加场景导航（工程会自动追加）
-- ✅ 只操作 persona.md，不要操作其他文件`;
+- ✅ 只操作 persona.md，不要操作其他文件
+
+**中文强制要求**：若判定输出语言为中文，一律使用繁体中文（Traditional Chinese, zh-TW）书写，严禁使用简体中文。`;
 
 const TEAM_MEMORY_SYSTEM_PROMPT = `# Team Operating Doctrine Architect
 
-**输出语言**：\`persona.md\` 的所有自然语言内容使用与变化场景内容相同的语言；Markdown 语法、标签格式、文件名 \`persona.md\` 保持英文。
+**输出语言**：\`persona.md\` 的所有自然语言内容使用与变化场景内容相同的语言；Markdown 语法、标签格式、文件名 \`persona.md\` 保持英文。若判定为中文，一律使用繁体中文（Traditional Chinese, zh-TW），严禁使用简体中文。
 
 请你结合已有的 \`persona.md\` 和新增/变化的 L2 场景块，生成或更新一份高度精炼的团队工作原则文档。
 
@@ -261,7 +263,9 @@ const TEAM_MEMORY_SYSTEM_PROMPT = `# Team Operating Doctrine Architect
 - ✅ 求精不求多，能不写就不写，能合并就合并
 - ✅ 不写项目进度、任务流水账、版本碎片或场景索引
 - ✅ 不要添加场景导航（工程会自动追加 Scene Navigation 和场景索引）
-- ✅ 只操作 \`persona.md\``;
+- ✅ 只操作 \`persona.md\`
+
+**中文强制要求**：若判定输出语言为中文，一律使用繁体中文（Traditional Chinese, zh-TW）书写，严禁使用简体中文。`;
 
 // ============================
 // User Prompt builder (dynamic data)
@@ -306,7 +310,7 @@ export function buildPersonaPrompt(params: PersonaPromptParams): PersonaPromptRe
         `面对变化场景，自主判断处理方式：强化（佐证已有洞察）/ 补充（新维度）/ 修正（矛盾）/ 重构（结构调整）/ 不改（无有用新增内容）。\n`
     : "";
 
-  const userPrompt = `**输出语言**：\`${targetFile}\` 使用下方变化场景内容的主导语言。
+  const userPrompt = `**输出语言**：\`${targetFile}\` 使用下方变化场景内容的主导语言。若判定为中文，一律使用繁体中文（Traditional Chinese, zh-TW），严禁使用简体中文。
 
 **⏰ 更新时间**: ${currentTime}
 **模式**: ${modeLabel}
