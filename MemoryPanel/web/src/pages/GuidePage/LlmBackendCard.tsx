@@ -129,8 +129,9 @@ export function LlmBackendCard() {
       </div>
       {status?.mode !== 'qwen' && (
         <p className="guide-llm-backend-warning">
-          ⚠ Claude 訂閱模式目前只支援 L1 抽取（純文字）——L2 場景抽取、L3 人格生成、Knowledge
-          wiki 摘要會失敗，直到補上 tool-calling 支援或切回 Qwen。
+          ⚠ Claude 訂閱模式目前只支援 L1 抽取（純文字）——L2 場景抽取、L3 人格生成會失敗，直到補上
+          tool-calling 支援或切回 Qwen。Knowledge wiki 摘要不受影響（它有自己獨立的 LLM
+          綁定，不跟著這裡切換）。
         </p>
       )}
       {error && <p className="guide-llm-backend-error">{error}</p>}

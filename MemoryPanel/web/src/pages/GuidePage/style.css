@@ -1271,4 +1271,15 @@
   .guide-titlebar {
     flex-direction: column;
   }
+
+  /* 下載配置包：原本左文字右按鈕的橫排，窄屏下文字欄被壓到只剩個位數寬，
+     導致中文一字一行。改直排、按鈕滿版置底，跟其他窄屏卡片排版一致。 */
+  .guide-package-download {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .guide-package-download a {
+    text-align: center;
+  }
 }
