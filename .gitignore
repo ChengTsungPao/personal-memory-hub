@@ -7,6 +7,9 @@ workspace/
 # Environment variables
 .env
 
+# Secrets staged for cross-machine setup (see AGENTS.md) — never committed
+setup/
+
 # Test caches
 __tests__/soak/.model-cache/
 
