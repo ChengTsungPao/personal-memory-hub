@@ -1,19 +1,25 @@
 #!/usr/bin/env bash
 # switch-llm-backend.sh — flip memory-core/memory-hub's MEMORY_LLM_* between
-# the local Ollama/Qwen model and the claude-llm-proxy (Claude Pro/Max
-# subscription via `claude -p`), then re-run start-memory-core.sh /
-# start-memory-hub.sh so the new binding actually takes effect.
+# the local Ollama/Qwen model, the claude-llm-proxy (Claude Pro/Max
+# subscription via `claude -p`), or OpenRouter, then re-run
+# start-memory-core.sh / start-memory-hub.sh so the new binding actually
+# takes effect.
 #
 # Usage:
-#   ./switch-llm-backend.sh proxy   # Claude subscription (../claude-llm-proxy)
-#   ./switch-llm-backend.sh qwen    # local Ollama qwen3-mem
-#   ./switch-llm-backend.sh status  # print which one .env currently points at
+#   ./switch-llm-backend.sh proxy       # Claude subscription (../claude-llm-proxy)
+#   ./switch-llm-backend.sh qwen        # local Ollama qwen3-mem
+#   ./switch-llm-backend.sh openrouter  # OpenRouter (real OpenAI-compatible API,
+#                                        #   native tool-calling — no proxy workarounds)
+#   ./switch-llm-backend.sh status      # print which one .env currently points at
 #
-# IMPORTANT: claude-llm-proxy only implements plain-text completion (L1
-# extraction). Switching to "proxy" mode will make L2 scene extraction, L3
-# persona generation, and Knowledge Service wiki ingest/summarize fail
-# (they call with tools enabled, which the proxy explicitly rejects) until
-# tool-calling support is added to the proxy, or you switch back to "qwen".
+# openrouter mode reads OPENROUTER_API_KEY / OPENROUTER_MODEL from .env — set
+# those first (see .env.example) or this refuses with a clear error.
+#
+# claude-llm-proxy emulates OpenAI tool-calling for L2/L3 by shelling out to
+# `claude -p` (see deploy/claude-llm-proxy/server.mjs) — it works, but it's a
+# workaround layered on a CLI never designed for this, verified only by
+# simulation so far, not a live L2/L3 trigger. openrouter has none of that:
+# it's a real OpenAI-compatible API with native tool-calling.
 
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -37,6 +43,8 @@ QWEN_MODEL="qwen3-mem"
 PROXY_URL="http://host.docker.internal:8622/v1"
 PROXY_KEY="local"
 PROXY_MODEL="sonnet"
+
+OPENROUTER_URL="https://openrouter.ai/api/v1"
 
 set_env_var() {
   local key="$1" value="$2"
@@ -63,17 +71,30 @@ case "${1:-}" in
     set_env_var MEMORY_LLM_MODEL "$QWEN_MODEL"
     set_env_var MEMORY_LLM_PROTOCOL "openai"
     ;;
+  openrouter)
+    if [[ -z "${OPENROUTER_API_KEY:-}" ]]; then
+      die "OPENROUTER_API_KEY 未設定 — 先在 .env 填上 OPENROUTER_API_KEY / OPENROUTER_MODEL（見 .env.example）再切這個模式"
+    fi
+    if [[ -z "${OPENROUTER_MODEL:-}" ]]; then
+      die "OPENROUTER_MODEL 未設定 — 先在 .env 填上要用的 OpenRouter model id（例如 anthropic/claude-sonnet-4.5）"
+    fi
+    set_env_var MEMORY_LLM_BASE_URL "$OPENROUTER_URL"
+    set_env_var MEMORY_LLM_API_KEY "$OPENROUTER_API_KEY"
+    set_env_var MEMORY_LLM_MODEL "$OPENROUTER_MODEL"
+    set_env_var MEMORY_LLM_PROTOCOL "openai"
+    ;;
   status)
     load_env
     case "${MEMORY_LLM_BASE_URL:-}" in
       "$PROXY_URL") echo "proxy (claude-llm-proxy, model=${MEMORY_LLM_MODEL:-})" ;;
       "$QWEN_URL") echo "qwen (local Ollama, model=${MEMORY_LLM_MODEL:-})" ;;
+      "$OPENROUTER_URL") echo "openrouter (model=${MEMORY_LLM_MODEL:-})" ;;
       *) echo "unknown (MEMORY_LLM_BASE_URL=${MEMORY_LLM_BASE_URL:-<unset>})" ;;
     esac
     exit 0
     ;;
   *)
-    die "用法: $0 proxy|qwen|status"
+    die "用法: $0 proxy|qwen|openrouter|status"
     ;;
 esac
 

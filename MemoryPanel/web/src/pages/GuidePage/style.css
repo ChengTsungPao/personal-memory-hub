@@ -927,6 +927,11 @@
   color: var(--tea-color-text-success-default, #0abf5b);
 }
 
+.guide-llm-backend-badge.openrouter {
+  background: #eef2ff;
+  color: #4338ca;
+}
+
 .guide-llm-backend-badge.unknown {
   background: var(--tea-color-bg-tertiary-default);
   color: var(--tea-color-text-tertiary);

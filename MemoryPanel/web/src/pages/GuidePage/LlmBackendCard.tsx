@@ -8,7 +8,7 @@
  */
 import { useCallback, useEffect, useState } from 'react';
 
-type BackendMode = 'proxy' | 'qwen' | 'unknown';
+type BackendMode = 'proxy' | 'qwen' | 'openrouter' | 'unknown';
 
 interface BackendStatus {
   mode: BackendMode;
@@ -66,7 +66,7 @@ export function LlmBackendCard() {
     load();
   }, [load]);
 
-  const handleSwitch = async (mode: 'proxy' | 'qwen') => {
+  const handleSwitch = async (mode: 'proxy' | 'qwen' | 'openrouter') => {
     setSwitching(mode);
     setError('');
     try {
@@ -104,7 +104,13 @@ export function LlmBackendCard() {
       <div className="guide-llm-backend-head">
         <h3>LLM 抽取後端</h3>
         <span className={`guide-llm-backend-badge ${status?.mode ?? 'unknown'}`}>
-          {status?.mode === 'proxy' ? 'Claude 訂閱 (Proxy)' : status?.mode === 'qwen' ? '本地 Qwen' : '未知'}
+          {status?.mode === 'proxy'
+            ? 'Claude 訂閱 (Proxy)'
+            : status?.mode === 'qwen'
+              ? '本地 Qwen'
+              : status?.mode === 'openrouter'
+                ? 'OpenRouter'
+                : '未知'}
         </span>
       </div>
       <p className="guide-llm-backend-detail">{status?.detail}</p>
@@ -126,13 +132,21 @@ export function LlmBackendCard() {
         >
           {switching === 'proxy' ? '切換中…' : '切到 Claude 訂閱'}
         </button>
+        <button
+          type="button"
+          className={status?.mode === 'openrouter' ? 'active' : ''}
+          disabled={switching !== null || status?.mode === 'openrouter'}
+          onClick={() => handleSwitch('openrouter')}
+        >
+          {switching === 'openrouter' ? '切換中…' : '切到 OpenRouter'}
+        </button>
       </div>
-      {status?.mode !== 'qwen' && (
+      {status?.mode === 'proxy' && (
         <p className="guide-llm-backend-warning">
           ⓘ Claude 訂閱模式下，L2 場景抽取、L3 人格生成靠 proxy 自己模擬 tool-calling（請模型輸出
           JSON 表示要呼叫的工具，proxy 再轉成標準格式）運作——機制已驗證可行，但還沒在正式 pipeline
-          的即時觸發上實際跑過，遇到問題請切回 Qwen。Knowledge wiki 摘要不受影響（它有自己獨立的
-          LLM 綁定，不跟著這裡切換）。
+          的即時觸發上實際跑過，遇到問題請切回 Qwen 或 OpenRouter。Knowledge wiki 摘要不受影響
+          （它有自己獨立的 LLM 綁定，不跟著這裡切換）。
         </p>
       )}
       {error && <p className="guide-llm-backend-error">{error}</p>}
