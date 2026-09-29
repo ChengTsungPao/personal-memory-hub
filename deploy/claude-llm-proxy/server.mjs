@@ -195,8 +195,16 @@ function tryParseToolCall(text) {
 
 function runClaude({ system, prompt, model, resumeSessionId }) {
   return new Promise((resolve, reject) => {
+    // `prompt` goes over stdin, not as a CLI argument: L2/L3 prompts (full
+    // conversation content, scene file contents, tool schemas) can be large
+    // enough to blow past Windows' ~32K total command-line length, which
+    // surfaced in production as `spawn ENAMETOOLONG`. `claude -p` with no
+    // positional argument reads the prompt from stdin instead (verified).
+    // `--system-prompt` has no stdin/file equivalent, so it stays a CLI arg —
+    // in practice much smaller than `prompt`, but still a residual risk if a
+    // future system prompt grows very large.
     const args = [
-      "-p", prompt,
+      "-p",
       "--output-format", "json",
       "--model", model,
       "--strict-mcp-config",   // don't load the user's real MCP servers
@@ -220,9 +228,9 @@ function runClaude({ system, prompt, model, resumeSessionId }) {
         CLAUDE_CODE_OAUTH_TOKEN: OAUTH_TOKEN,
       },
       shell: false,
-      // claude -p otherwise waits ~3s to see if stdin has data before proceeding.
-      stdio: ["ignore", "pipe", "pipe"],
+      stdio: ["pipe", "pipe", "pipe"],
     });
+    child.stdin.end(prompt);
 
     let stdout = "";
     let stderr = "";
