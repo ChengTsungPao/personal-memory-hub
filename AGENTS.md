@@ -113,26 +113,100 @@ Mobile-responsive, Traditional Chinese fork of the upstream Panel — port
 
 ## 5. Claude Code integration (hooks + MCP) — Claude-Code-specific
 
-Merge `agents/claude-code/settings.template.json`'s `hooks` + `env` blocks
-into `~/.claude/settings.json` (fixing the absolute paths), then:
+Only Claude Code is wired here. The two hooks (auto-capture every turn,
+auto-inject memory at session start) have no equivalent set up for other
+harnesses; for those, only the MCP server (5c) applies, and that hasn't
+been tested outside Claude Code.
+
+### 5a. Get your real team_id / user_id
+
+Both must be real ids, not `default`: `TDAI_USER_ID` becomes the owner when
+a new per-project agent is auto-registered, and a non-existent owner makes
+that registration fail — everything then silently collapses back into one
+`"default"` bucket.
+
+```bash
+# user_id — from the admin key generated in step 1
+curl -s -X POST http://127.0.0.1:8420/v3/meta/auth/verify \
+  -H "Content-Type: application/json" -H "x-tdai-service-id: default" \
+  -d "{\"user_key\":\"$(cat deploy/global-images/.admin-key)\"}"
+# -> data.user.user_id, e.g. usr-xxxxxxxxxx
+```
+
+`team_id`: shown under the team name in the Panel's top-left switcher
+(e.g. `team-xxxxxxxxxx`).
+
+### 5b. Hooks — add to `~/.claude/settings.json`
+
+Merge these two blocks into the existing file (don't replace it — other
+tools may have their own hooks there). Replace `<REPO>` with this repo's
+absolute path (forward slashes on Windows, e.g.
+`C:/Users/you/personal-memory-hub`) and fill in the ids from 5a:
+
+```json
+{
+  "env": {
+    "TDAI_ENDPOINT": "http://127.0.0.1:8420",
+    "TDAI_SERVICE_ID": "default",
+    "TDAI_TEAM_ID": "<team-id>",
+    "TDAI_USER_ID": "<user-id>"
+  },
+  "hooks": {
+    "SessionStart": [
+      { "hooks": [ {
+        "type": "command", "command": "node",
+        "args": ["<REPO>/agents/claude-code/hooks/memory-recall.mjs"],
+        "timeout": 10, "statusMessage": "Loading long-term memory..."
+      } ] }
+    ],
+    "Stop": [
+      { "hooks": [ {
+        "type": "command", "command": "node",
+        "args": ["<REPO>/agents/claude-code/hooks/memory-capture.mjs"],
+        "timeout": 15
+      } ] }
+    ]
+  }
+}
+```
+
+- `SessionStart` → `memory-recall.mjs`: injects this project's L3 persona +
+  L2 scene index into the new session. Injects nothing until the project
+  has accumulated enough conversations for the pipeline to build L2/L3.
+- `Stop` → `memory-capture.mjs`: sends each finished turn to L0. Only the
+  new part of the transcript each time (cursor in
+  `~/.memory-tdai/claude-code/`).
+- Both hooks always exit 0 and print nothing on failure — a down backend
+  never blocks a session. Set `TDAI_DEBUG=1` to see what they do.
+
+Same content, with comments: `agents/claude-code/settings.template.json`.
+
+### 5c. MCP server (on-demand search/read/write from inside a session)
 
 ```bash
 claude mcp add memorycore -s user --env TDAI_TEAM_ID=<team-id> --env TDAI_USER_ID=<user-id> -- \
-  node <absolute-path-to-repo>/agents/claude-code/mcp/server.mjs
+  node <REPO>/agents/claude-code/mcp/server.mjs
 ```
 
-**Do not set `TDAI_AGENT_ID`** in either place — it auto-registers a real
-MemoryCore agent per git project (and one shared `adhoc-chat` bucket for
-non-project chats), caching the result in
-`~/.memory-tdai/claude-code/agents.json`. This needs the admin key
-(`TDAI_ADMIN_KEY_FILE`, defaults to `deploy/global-images/.admin-key`
-relative to this repo) to register new agents — without it, everything
-silently falls back to a single `"default"` agent instead of splitting per
-project. Full detail + why this design, not per-session:
-`agents/claude-code/README.md` "Memory isolation" section.
+Tools it exposes: `memory_search` (L0+L1), `scenario_list`/`scenario_read`
+(L2), `core_read`/`core_write` (L3), `scenario_write`.
 
-Find `<team-id>`/`<user-id>` from the Panel (top-left team switcher) or
-`.admin-key`'s associated admin user after step 1 completes.
+### 5d. Rules that apply to both
+
+**Do not set `TDAI_AGENT_ID`** in the hooks' env or the MCP registration —
+leave it unset and the right agent is picked per project automatically: one
+real MemoryCore agent per git repo (same repo across sessions/worktrees =
+same agent), one shared `adhoc-chat` agent for chats outside any git repo.
+The mapping is cached in `~/.memory-tdai/claude-code/agents.json`.
+Registering a new agent needs the admin key (`TDAI_ADMIN_KEY_FILE`,
+defaults to `deploy/global-images/.admin-key` in this repo).
+
+**Changes only apply to new sessions.** Claude Code reads the `env` block
+and connects MCP servers once at session start — an already-open session
+keeps the old values until you start a new one.
+
+Full detail + why per-project, not per-session:
+`agents/claude-code/README.md` "Memory isolation" section.
 
 ## Verifying it worked
 
