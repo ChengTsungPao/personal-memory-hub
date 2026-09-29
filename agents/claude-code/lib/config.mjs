@@ -17,7 +17,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 /** Sentinel project key for every chat that isn't inside a git repo. */
 const ADHOC_KEY = "adhoc";
-const ADHOC_NAME = "隨手聊天";
+const ADHOC_NAME = "adhoc-chat";
 
 /**
  * Derive a stable *project key* + human-readable name from `cwd`'s git
@@ -38,7 +38,7 @@ const ADHOC_NAME = "隨手聊天";
  *
  * When `cwd` isn't inside a git repo at all (a one-off chat with no
  * project), there's no stable project identity to accumulate memory
- * around — these all share one fixed "隨手聊天" bucket (ADHOC_KEY) rather
+ * around — these all share one fixed "adhoc-chat" bucket (ADHOC_KEY) rather
  * than each getting their own (that was tried first; it meant every
  * non-project chat minted a brand-new agent that would show up in the
  * Panel forever after a single use).
