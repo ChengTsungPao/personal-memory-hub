@@ -73,7 +73,7 @@ async function main() {
     // derivation just falls back to "default" below).
   }
 
-  const cfg = loadConfig(payload.cwd, payload.session_id);
+  const cfg = await loadConfig(payload.cwd);
 
   if (SKIP_SOURCES.has(payload.source)) {
     return debugLog(cfg, `source=${payload.source}; memory already in context`);

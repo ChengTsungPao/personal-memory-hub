@@ -16,7 +16,7 @@ import { loadConfig } from "../lib/config.mjs";
 import { CoreClient } from "../lib/core-client.mjs";
 
 const PROTOCOL_VERSION = "2024-11-05";
-const cfg = loadConfig();
+const cfg = await loadConfig();
 const client = new CoreClient(cfg);
 
 // ── Tool definitions ────────────────────────────────────────────────────

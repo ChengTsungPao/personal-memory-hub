@@ -237,11 +237,12 @@ settings file, so no secret is ever committed.
 | `TDAI_SERVICE_ID` | `default` | Instance id (`x-tdai-service-id`) |
 | `TDAI_KERNEL_TOKEN` | *(empty → sends `Bearer local`)* | Layer-1 gateway token. The gateway rejects a request with **no** `Authorization` header even when it has no apiKey — it just doesn't check the value — so an empty token still sends a placeholder, as MemoryProxy does |
 | `TDAI_TEAM_ID` | `default` | Isolation triple — v3 requires team + agent + user. **Set this to the id the panel shows** (e.g. `team-…`): memory written under `default` is stored fine but is invisible in the panel, which browses by its own ids |
-| `TDAI_AGENT_ID` | *(auto-derived, see below — set this only to force one fixed value)* | |
+| `TDAI_AGENT_ID` | *(auto-registered per project, see below — set this only to force one fixed value)* | |
 | `TDAI_USER_ID` | `default` | |
 | `TDAI_TASK_ID` | *(unset)* | Optional; omitted from requests when empty |
 | `TDAI_TIMEOUT_MS` | `8000` | Per-request timeout |
-| `TDAI_STATE_DIR` | `~/.memory-tdai/claude-code` | Where capture cursors live |
+| `TDAI_STATE_DIR` | `~/.memory-tdai/claude-code` | Where capture cursors + the project→agent_id registry (`agents.json`) live |
+| `TDAI_ADMIN_KEY_FILE` | `deploy/global-images/.admin-key` (relative to this repo) | MemoryCore admin `user_key`, needed only to auto-register a new agent the first time a project is seen — see below |
 | `TDAI_DEBUG` | *(unset)* | `1` logs hook diagnostics to stderr |
 
 ### Memory isolation: why `agent_id` is per-project, not per-session
@@ -277,30 +278,64 @@ Naively fixing this by keying on **session_id instead** would be worse, not
 better: session_id changes every time you open `claude`, so every session
 would become an isolated island that can never see memory from any earlier
 session — the L1/L2/L3 pipeline would have nothing to accumulate, defeating
-the entire point of long-term memory.
+the entire point of long-term memory. (An earlier version of this fix tried
+exactly that for non-git chats specifically — see below for why that was
+also wrong, in a smaller way.)
 
-**The actual fix: derive `agent_id` from the project's git identity.**
-`lib/config.mjs`'s `loadConfig(cwd, sessionId)` now derives `agent_id`
-automatically (only when `TDAI_AGENT_ID` isn't set explicitly), in order:
+**The actual fix: one real MemoryCore agent per project, auto-registered
+and cached.** `MemoryCore`'s `/v3/meta/agent/create` doesn't accept a
+caller-chosen `agent_id` — it always mints its own random one, and creating
+an agent is also what auto-provisions its `chat_memory` asset (so the Panel
+actually lists it). So `agent_id` can't just be *computed* locally the way
+the old approach tried; it has to be *registered*, once per project, and
+remembered. `lib/config.mjs`'s `loadConfig(cwd)` does this automatically
+(only when `TDAI_AGENT_ID` isn't set explicitly):
 
-1. `git remote get-url origin`, hashed — stable across clones/worktrees of the
-   same repo.
-2. The repo's root commit hash (`git rev-list --max-parents=0 HEAD`) when
-   there's no `origin` remote — unlike the working-directory path, this stays
-   identical across `git worktree` checkouts of the same history, which a
-   path-based key would incorrectly split apart.
-3. `agt-{sessionId}` when `cwd` isn't inside a git repo at all — a one-off
-   chat with no project has no stable identity to accumulate memory around
-   anyway, so each such chat gets its own small bucket instead of dumping into
-   one shared catch-all that would pollute every other unrelated one-off chat.
-4. Literal `"default"` only when neither `cwd` nor `sessionId` is available
-   (e.g. the MCP server, a long-lived process with no per-call session id,
-   running outside any git repo).
+1. Derive a **project key** from `cwd`'s git identity — `git remote get-url
+   origin` hashed (stable across clones/worktrees of the same repo), or the
+   repo's root commit hash (`git rev-list --max-parents=0 HEAD`) when there's
+   no `origin` remote (unlike the working-directory path, this stays
+   identical across `git worktree` checkouts of the same history). When
+   `cwd` isn't inside a git repo at all, every such chat shares one fixed
+   key (`"adhoc"`) instead of each minting its own agent — a one-off chat
+   with no project has no stable identity to accumulate memory around
+   anyway, and giving each one its own agent meant the Panel accumulated a
+   new entry per one-off chat, forever, with no way back to "default".
+2. Look up that project key in `<TDAI_STATE_DIR>/agents.json` (a flat JSON
+   map, alongside the capture cursors). A hit returns the cached `agent_id`
+   immediately — no network call.
+3. On a miss (first time this project is seen), `POST
+   /v3/meta/agent/create` with `team_id`, `owner_user_id: TDAI_USER_ID`, and
+   `name` set to the repo name (parsed from the remote URL, or the folder
+   name when there's no remote — `"隨手聊天"` for the adhoc bucket). The
+   response's `agent_id` is cached into `agents.json` and returned.
+4. Registration failure of any kind (see below) — or no git repo *and* the
+   admin key missing — falls back to the literal string `"default"`, the
+   original pre-fix behavior. A hook must never hang or error out over this;
+   losing per-project isolation for one call is a far smaller problem than
+   blocking the user's turn.
 
-The two hooks pass `payload.cwd` and `payload.session_id` from the hook's
-stdin payload; the MCP server (a persistent process) uses its own
-`process.cwd()` at launch. `team_id` and `user_id` stay fixed — only
-`agent_id` (which project) varies.
+**This needs the admin key, not the hooks' usual token.** `/v3/meta/*`
+endpoints authenticate via an `x-tdai-user-key` header carrying a real
+MemoryCore user key — the `Bearer local` placeholder the hooks send on
+every other (data-plane) call doesn't work here and gets a plain 401. Set
+`TDAI_ADMIN_KEY_FILE` to point at `deploy/global-images/.admin-key` (the
+default already does, assuming this repo's own layout); without it,
+registration silently no-ops and everything falls back to `"default"`.
+
+The two hooks pass `payload.cwd` from the hook's stdin payload; the MCP
+server (a persistent process) uses its own `process.cwd()` at launch.
+`team_id` and `user_id` stay fixed — only `agent_id` (which project) varies.
+Existing memory recorded before this fix (or under `"default"`, or under a
+per-session id from the short-lived approach in between) is **not**
+migrated — it stays where it was; only new activity gets sorted correctly
+going forward.
+
+Verified live on this machine: three real projects
+(`personal-memory-hub`, this worktree's parent repo, and the adhoc bucket)
+each auto-registered their own agent on first use, each got its own
+`chat_memory` asset, and the Panel now lists four entries instead of the
+one it used to collapse everything into.
 
 ### 5. Register the hooks
 

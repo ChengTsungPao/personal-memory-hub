@@ -36,7 +36,7 @@ async function main() {
   }
 
   const sessionId = payload.session_id;
-  const cfg = loadConfig(payload.cwd, sessionId);
+  const cfg = await loadConfig(payload.cwd);
 
   const transcriptPath = payload.transcript_path;
   if (!sessionId || !transcriptPath) {

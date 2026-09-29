@@ -10,50 +10,127 @@ import os from "node:os";
 import path from "node:path";
 import crypto from "node:crypto";
 import { execFileSync } from "node:child_process";
+import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+/** Sentinel project key for every chat that isn't inside a git repo. */
+const ADHOC_KEY = "adhoc";
+const ADHOC_NAME = "隨手聊天";
 
 /**
- * Derive a stable agent_id from the project's git identity, so memory
- * naturally isolates per-project instead of every Claude Code session on the
- * machine sharing one bucket (see agents/claude-code/README.md "Memory
- * isolation: why agent_id, not session_id").
+ * Derive a stable *project key* + human-readable name from `cwd`'s git
+ * identity, so memory naturally isolates per-project instead of every
+ * Claude Code session on the machine sharing one bucket (see
+ * agents/claude-code/README.md "Memory isolation: why agent_id is
+ * per-project, not per-session").
+ *
+ * This is NOT the final agent_id — MemoryCore's `/v3/meta/agent/create`
+ * doesn't accept a caller-chosen id, it always mints its own random one. So
+ * `resolveAgentId()` below uses this key to look up (or register, once) the
+ * real agent_id in a local registry file instead.
  *
  * Prefers the `origin` remote URL (stable across clones/worktrees). Falls
  * back to the repo's root commit hash — unlike the working-directory path,
  * this stays identical across `git worktree` checkouts of the same history,
  * which a path-based key would incorrectly split apart.
  *
- * When `cwd` isn't inside a git repo at all (a one-off chat with no project),
- * there's no stable project identity to accumulate memory around, so this
- * falls back to `sessionId` instead — each such chat gets its own bucket
- * rather than dumping into one shared catch-all with every other non-project
- * chat. That trades away cross-session memory for these specific chats (by
- * definition there's no "project" for it to persist across), which is the
- * right trade here: better than silently merging unrelated one-off
- * conversations into a shared bucket that then pollutes SessionStart context
- * for the next unrelated one-off chat. When `sessionId` also isn't available
- * (the MCP server has no per-call session id), falls back to "default".
+ * When `cwd` isn't inside a git repo at all (a one-off chat with no
+ * project), there's no stable project identity to accumulate memory
+ * around — these all share one fixed "隨手聊天" bucket (ADHOC_KEY) rather
+ * than each getting their own (that was tried first; it meant every
+ * non-project chat minted a brand-new agent that would show up in the
+ * Panel forever after a single use).
  *
  * Must never throw or hang a hook — every git call is caught and bounded.
  */
-function deriveAgentId(cwd, sessionId) {
+function deriveProjectKey(cwd) {
   if (cwd) {
     const gitOpts = { cwd, stdio: ["ignore", "pipe", "ignore"], timeout: 3000 };
     try {
       const remote = execFileSync("git", ["remote", "get-url", "origin"], gitOpts).toString().trim();
-      if (remote) return `agt-${crypto.createHash("sha256").update(remote).digest("hex").slice(0, 16)}`;
+      if (remote) {
+        const key = `git-remote:${crypto.createHash("sha256").update(remote).digest("hex").slice(0, 16)}`;
+        const name = remote.replace(/\.git$/, "").split(/[/:]/).filter(Boolean).pop() || key;
+        return { key, name };
+      }
     } catch {
       // no remote, or not a repo — fall through to the root-commit check below
     }
     try {
       const rootCommit = execFileSync("git", ["rev-list", "--max-parents=0", "HEAD"], gitOpts)
         .toString().trim().split("\n")[0];
-      if (rootCommit) return `agt-${rootCommit.slice(0, 16)}`;
+      if (rootCommit) {
+        const key = `git-root:${rootCommit.slice(0, 16)}`;
+        const name = path.basename(cwd) || key;
+        return { key, name };
+      }
     } catch {
-      // not a git repo at all — fall through to the session-scoped fallback
+      // not a git repo at all — fall through to the adhoc bucket below
     }
   }
-  if (sessionId) return `agt-${sessionId}`;
-  return null;
+  return { key: ADHOC_KEY, name: ADHOC_NAME };
+}
+
+// ============================
+// Local project -> agent_id registry
+// ============================
+
+function registryPath(stateDir) {
+  return path.join(stateDir, "agents.json");
+}
+
+function loadRegistry(stateDir) {
+  try {
+    return JSON.parse(readFileSync(registryPath(stateDir), "utf8"));
+  } catch {
+    return {};
+  }
+}
+
+function saveRegistry(stateDir, registry) {
+  mkdirSync(stateDir, { recursive: true });
+  writeFileSync(registryPath(stateDir), JSON.stringify(registry, null, 2), "utf8");
+}
+
+/**
+ * Resolve a project key to a real MemoryCore agent_id, registering a new
+ * agent (which auto-provisions its chat_memory asset) the first time this
+ * project key is seen. Cached in `<stateDir>/agents.json` after that.
+ *
+ * MemoryCore's HTTP API needs the admin `x-tdai-user-key` (not the plain
+ * `Bearer local` the hooks otherwise use) to call `/v3/meta/agent/create` —
+ * see agents/claude-code/README.md. Returns null (caller falls back to
+ * "default") on any failure: missing admin key file, network error, auth
+ * error — registration is a nice-to-have, never worth blocking a hook over.
+ */
+async function resolveAgentId(cfg, projectKey, projectName) {
+  const registry = loadRegistry(cfg.stateDir);
+  if (registry[projectKey]) return registry[projectKey];
+
+  if (!cfg.adminKey) return null;
+
+  try {
+    const res = await fetch(`${cfg.endpoint}/v3/meta/agent/create`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-tdai-service-id": cfg.serviceId,
+        "x-tdai-user-key": cfg.adminKey,
+      },
+      body: JSON.stringify({ team_id: cfg.teamId, owner_user_id: cfg.userId, name: projectName }),
+      signal: AbortSignal.timeout(cfg.timeoutMs),
+    });
+    const payload = await res.json();
+    if (!res.ok || payload.code !== 0 || !payload.data?.agent_id) return null;
+
+    registry[projectKey] = payload.data.agent_id;
+    saveRegistry(cfg.stateDir, registry);
+    return payload.data.agent_id;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -63,14 +140,14 @@ function deriveAgentId(cwd, sessionId) {
  *   the stdin payload; the MCP server, a long-lived process, uses its own
  *   process.cwd() by default). Used only to derive agent_id when
  *   TDAI_AGENT_ID isn't set explicitly.
- * @param {string} [sessionId] The session id (hooks get this from the stdin
- *   payload). Only used as a last-resort agent_id fallback when `cwd` isn't
- *   inside a git repo.
  */
-export function loadConfig(cwd = process.cwd(), sessionId) {
+export async function loadConfig(cwd = process.cwd()) {
   const endpoint = (process.env.TDAI_ENDPOINT ?? "http://127.0.0.1:8420").replace(/\/+$/, "");
+  const stateDir = process.env.TDAI_STATE_DIR ?? path.join(os.homedir(), ".memory-tdai", "claude-code");
+  const adminKeyFile = process.env.TDAI_ADMIN_KEY_FILE
+    ?? path.join(__dirname, "..", "..", "..", "deploy", "global-images", ".admin-key");
 
-  return {
+  const cfg = {
     endpoint,
     /** Instance id — `default` for a local single-instance deploy. */
     serviceId: process.env.TDAI_SERVICE_ID ?? "default",
@@ -78,17 +155,27 @@ export function loadConfig(cwd = process.cwd(), sessionId) {
     kernelToken: process.env.TDAI_KERNEL_TOKEN ?? "",
     /** v3 enforces the team+agent+user triple; absent values fall back to `default`. */
     teamId: process.env.TDAI_TEAM_ID ?? "default",
-    agentId: process.env.TDAI_AGENT_ID ?? deriveAgentId(cwd, sessionId) ?? "default",
     userId: process.env.TDAI_USER_ID ?? "default",
     /** Optional business dimension — omitted entirely when unset. */
     taskId: process.env.TDAI_TASK_ID ?? "",
     /** Per-request timeout. Hooks must never hang a turn. */
     timeoutMs: Number(process.env.TDAI_TIMEOUT_MS ?? 8000),
-    /** Where capture cursors live. */
-    stateDir: process.env.TDAI_STATE_DIR ?? path.join(os.homedir(), ".memory-tdai", "claude-code"),
+    /** Where capture cursors + the project->agent_id registry live. */
+    stateDir,
+    /** Admin user_key, only used to auto-register a new agent per project. */
+    adminKey: existsSync(adminKeyFile) ? readFileSync(adminKeyFile, "utf8").trim() : "",
     /** Set to "1" to log diagnostics to stderr (visible in hook debug output). */
     debug: process.env.TDAI_DEBUG === "1",
   };
+
+  if (process.env.TDAI_AGENT_ID) {
+    cfg.agentId = process.env.TDAI_AGENT_ID;
+  } else {
+    const { key, name } = deriveProjectKey(cwd);
+    cfg.agentId = (await resolveAgentId(cfg, key, name)) ?? "default";
+  }
+
+  return cfg;
 }
 
 /** The isolation fields, ready to spread into a request body. */
