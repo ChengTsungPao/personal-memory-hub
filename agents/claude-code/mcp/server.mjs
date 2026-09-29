@@ -21,7 +21,16 @@ const client = new CoreClient(cfg);
 
 // ── Tool definitions ────────────────────────────────────────────────────
 
+const AGENT_DESC =
+  "Optional, read-only lookup of ANOTHER project's memory: an agent name (e.g. 'sweetlips') " +
+  "or id ('agt-...'). See agent_list. Omit to use this session's own agent.";
+
 const TOOLS = [
+  {
+    name: "agent_list",
+    description: "List the memory agents (one per project) whose memory can be read via the 'agent' argument.",
+    inputSchema: { type: "object", properties: {} },
+  },
   {
     name: "memory_search",
     description:
@@ -38,6 +47,7 @@ const TOOLS = [
           enum: ["both", "conversations", "atoms"],
           description: "Which layer to search. Default 'both'.",
         },
+        agent: { type: "string", description: AGENT_DESC },
       },
       required: ["query"],
     },
@@ -51,6 +61,7 @@ const TOOLS = [
       type: "object",
       properties: {
         path_prefix: { type: "string", description: "Optional directory prefix to narrow the listing." },
+        agent: { type: "string", description: AGENT_DESC },
       },
     },
   },
@@ -59,7 +70,10 @@ const TOOLS = [
     description: "Read one L2 scenario block by its path (as returned by scenario_list).",
     inputSchema: {
       type: "object",
-      properties: { path: { type: "string", description: "Scenario block path, e.g. 'scene_blocks/postgres.md'." } },
+      properties: {
+        path: { type: "string", description: "Scenario block path, e.g. 'scene_blocks/postgres.md'." },
+        agent: { type: "string", description: AGENT_DESC },
+      },
       required: ["path"],
     },
   },
@@ -86,7 +100,9 @@ const TOOLS = [
     description:
       "Read the L3 core persona — the user's stable long-term profile. Returns null content " +
       "when nothing has been written yet.",
-    inputSchema: { type: "object", properties: {} },
+    inputSchema: { type: "object", properties: {
+        agent: { type: "string", description: AGENT_DESC },
+    } },
   },
   {
     name: "core_write",
@@ -104,8 +120,24 @@ const TOOLS = [
 
 // ── Tool implementations ────────────────────────────────────────────────
 
+/** Name or id -> agent_id. undefined = this session's own agent. Never falls back silently. */
+async function resolveAgent(ref) {
+  if (!ref) return undefined;
+  const agents = await client.listAgents();
+  const hit = agents.find((a) => a.agent_id === ref) ?? agents.find((a) => a.name === ref);
+  if (!hit) {
+    throw new Error(`unknown agent "${ref}". Known: ${agents.map((a) => `${a.name} (${a.agent_id})`).join(", ")}`);
+  }
+  return hit.agent_id;
+}
+
 async function callTool(name, args = {}) {
+  const readTools = ["memory_search", "scenario_list", "scenario_read", "core_read"];
+  const agentId = readTools.includes(name) ? await resolveAgent(args.agent) : undefined;
   switch (name) {
+    case "agent_list":
+      return client.listAgents();
+
     case "memory_search": {
       const limit = args.limit ?? 10;
       const layer = args.layer ?? "both";
@@ -114,7 +146,7 @@ async function callTool(name, args = {}) {
       if (layer === "both" || layer === "conversations") {
         jobs.push(
           client
-            .searchConversation(args.query, limit)
+            .searchConversation(args.query, limit, agentId)
             .then((d) => { out.conversations = d; })
             .catch((e) => { out.conversations = { error: e.message }; }),
         );
@@ -122,7 +154,7 @@ async function callTool(name, args = {}) {
       if (layer === "both" || layer === "atoms") {
         jobs.push(
           client
-            .searchAtomic(args.query, limit)
+            .searchAtomic(args.query, limit, agentId)
             .then((d) => { out.atoms = d; })
             .catch((e) => { out.atoms = { error: e.message }; }),
         );
@@ -132,16 +164,16 @@ async function callTool(name, args = {}) {
     }
 
     case "scenario_list":
-      return client.listScenarios(args.path_prefix);
+      return client.listScenarios(args.path_prefix, agentId);
 
     case "scenario_read":
-      return client.readScenario(args.path);
+      return client.readScenario(args.path, agentId);
 
     case "scenario_write":
       return client.writeScenario(args.path, args.content, args.summary);
 
     case "core_read":
-      return client.readCore();
+      return client.readCore(agentId);
 
     case "core_write":
       return client.writeCore(args.content);

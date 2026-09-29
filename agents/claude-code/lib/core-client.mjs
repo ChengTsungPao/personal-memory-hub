@@ -25,6 +25,8 @@ export class CoreError extends Error {
   }
 }
 
+const agentOverride = (agentId) => (agentId ? { agent_id: agentId } : {});
+
 export class CoreClient {
   constructor(cfg) {
     this.cfg = cfg;
@@ -81,6 +83,27 @@ export class CoreClient {
     }
   }
 
+  /** Agents in this team (control plane — needs the admin user_key, not Bearer). */
+  async listAgents() {
+    const { cfg } = this;
+    if (!cfg.adminKey) throw new CoreError("admin key not found; cannot list agents");
+    const res = await fetch(`${cfg.endpoint}/v3/meta/agent/list`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-tdai-service-id": cfg.serviceId,
+        "x-tdai-user-key": cfg.adminKey,
+      },
+      body: JSON.stringify({ team_id: cfg.teamId }),
+      signal: AbortSignal.timeout(cfg.timeoutMs),
+    });
+    const payload = await res.json();
+    if (!res.ok || payload.code !== 0) {
+      throw new CoreError(`agent/list: ${payload.message ?? res.status}`, { status: res.status, code: payload.code });
+    }
+    return (payload.data?.items ?? []).map((a) => ({ agent_id: a.agent_id, name: a.name, status: a.status }));
+  }
+
   // ── L0 ────────────────────────────────────────────────────────────────
 
   /**
@@ -101,14 +124,14 @@ export class CoreClient {
     return accepted;
   }
 
-  searchConversation(query, limit = 10) {
-    return this.post("/v3/conversation/search", { query, limit });
+  searchConversation(query, limit = 10, agentId) {
+    return this.post("/v3/conversation/search", { query, limit, ...agentOverride(agentId) });
   }
 
   // ── L1 ────────────────────────────────────────────────────────────────
 
-  searchAtomic(query, limit = 10) {
-    return this.post("/v3/atomic/search", { query, limit });
+  searchAtomic(query, limit = 10, agentId) {
+    return this.post("/v3/atomic/search", { query, limit, ...agentOverride(agentId) });
   }
 
   queryAtomic(filter = {}) {
@@ -117,12 +140,12 @@ export class CoreClient {
 
   // ── L2 (scenario blocks) ──────────────────────────────────────────────
 
-  listScenarios(pathPrefix) {
-    return this.post("/v3/scenario/ls", pathPrefix ? { path_prefix: pathPrefix } : {});
+  listScenarios(pathPrefix, agentId) {
+    return this.post("/v3/scenario/ls", { ...(pathPrefix ? { path_prefix: pathPrefix } : {}), ...agentOverride(agentId) });
   }
 
-  readScenario(filePath) {
-    return this.post("/v3/scenario/read", { path: filePath });
+  readScenario(filePath, agentId) {
+    return this.post("/v3/scenario/read", { path: filePath, ...agentOverride(agentId) });
   }
 
   writeScenario(filePath, content, summary) {
@@ -134,8 +157,8 @@ export class CoreClient {
   // ── L3 (core persona) ─────────────────────────────────────────────────
 
   /** `content` is null when no persona has been written yet — not an error. */
-  readCore() {
-    return this.post("/v3/core/read", {});
+  readCore(agentId) {
+    return this.post("/v3/core/read", agentOverride(agentId));
   }
 
   writeCore(content) {

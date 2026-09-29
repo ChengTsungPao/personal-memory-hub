@@ -366,6 +366,7 @@ on an RTX 3060 12 GB.
 | L3 persona generation | `persona.md` written (≈2.7 k chars, ≈70 s) |
 | `SessionStart` hook | injects persona + scene index as `additionalContext` |
 | MCP `memory_search` / `scenario_list` / `core_read` / `core_write` | work |
+| MCP read tools with `agent=<name or id>` (cross-project read), `agent_list` | work (verified: same session returns different data per agent; unknown agent errors, never falls back silently) |
 | Panel UI | shows L0 / L1 / L2 once the env ids match the panel's |
 | Container recreate | admin user and L1 atoms persist (named volume) |
 

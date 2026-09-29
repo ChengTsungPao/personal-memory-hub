@@ -189,7 +189,13 @@ claude mcp add memorycore -s user --env TDAI_TEAM_ID=<team-id> --env TDAI_USER_I
 ```
 
 Tools it exposes: `memory_search` (L0+L1), `scenario_list`/`scenario_read`
-(L2), `core_read`/`core_write` (L3), `scenario_write`.
+(L2), `core_read`/`core_write` (L3), `scenario_write`, `agent_list`.
+
+The session is bound to its own project's agent, but the four read tools
+(`memory_search`, `scenario_list`, `scenario_read`, `core_read`) accept an
+optional `agent` argument (name like `sweetlips` or id `agt-...`, see
+`agent_list`) to read another project's memory. Writes never take it — they
+always go to the session's own agent.
 
 ### 5d. Rules that apply to both
 
@@ -204,6 +210,8 @@ defaults to `deploy/global-images/.admin-key` in this repo).
 **Changes only apply to new sessions.** Claude Code reads the `env` block
 and connects MCP servers once at session start — an already-open session
 keeps the old values until you start a new one.
+
+Design reference (mapping, binding lifetime, cross-project reads): `docs/claude-code-memory-design.md`.
 
 Full detail + why per-project, not per-session:
 `agents/claude-code/README.md` "Memory isolation" section.
