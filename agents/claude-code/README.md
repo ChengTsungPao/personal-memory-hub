@@ -197,7 +197,7 @@ MemoryCore directly, so it runs on its own:
 docker run -d --name tdai-memory-hub \
   --add-host=host.docker.internal:host-gateway \
   -p 8125:8125 -p 8424:8424 \
-  -v tdai-panel-data:/data/knowledge \
+  -v "$HOME/.personal-memory-hub/panel-data:/data/knowledge" \
   -e REMOTE_INSTANCE_URL=http://host.docker.internal:8420 \
   -e REMOTE_INSTANCE_KEY=local \
   -e KNOWLEDGE_PUBLIC_BASE_URL=http://host.docker.internal:8424/v3 \
@@ -368,7 +368,7 @@ on an RTX 3060 12 GB.
 | MCP `memory_search` / `scenario_list` / `core_read` / `core_write` | work |
 | MCP read tools with `agent=<name or id>` (cross-project read), `agent_list` | work (verified: same session returns different data per agent; unknown agent errors, never falls back silently) |
 | Panel UI | shows L0 / L1 / L2 once the env ids match the panel's |
-| Container recreate | admin user and L1 atoms persist (named volume) |
+| Container recreate | admin user and L1 atoms persist (host data dir, see below) |
 
 Things that behave differently from what you might assume — each found by
 running it, not by reading the docs:
@@ -396,7 +396,7 @@ running it, not by reading the docs:
 
 **No Tencent Cloud VectorDB.** `storeBackend: sqlite` in the generated config;
 `docker inspect` on the running containers shows no `tcvdb`/`tencent`-related
-env var. Storage is a local SQLite file on a named Docker volume.
+env var. Storage is a local SQLite file in a host folder (`~/.personal-memory-hub/core-data`), bind-mounted into the container, not a Docker volume, so it survives Docker crashes, resets and reinstalls.
 
 **Nothing in this deployment is configured to call an external service.**
 `MEMORY_LLM_*` points at local Ollama; `PROXY_*` is set to `unused` and the

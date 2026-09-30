@@ -14,7 +14,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/_lib.sh"
 
 load_env
-require_vars MEMORY_CORE_IMAGE MEMORY_CORE_PORT MEMORY_CORE_VOLUME
+require_vars MEMORY_CORE_IMAGE MEMORY_CORE_PORT
 
 # ── Gateway 内部管理凭据 ─────────────────────────────────────────
 # 用 ${VAR-default}（不是 :-default）：允许 .env 里显式设为空字符串来关闭 Bearer gate。
@@ -115,7 +115,7 @@ if [[ "$MEMORY_CORE_METADATA_BACKEND" == "mongodb" ]]; then
   MONGO_ENV_ARGS+=( -e "TDAI_METADATA_MONGO_URI=$TDAI_METADATA_MONGO_URI" )
   info "memory-core 元数据后端 = mongodb（uri=$TDAI_METADATA_MONGO_URI, 库名 tdai_metadata_<instance>）"
 else
-  info "memory-core 元数据后端 = sqlite（容器 volume 内）"
+  info "memory-core 元数据后端 = sqlite（宿主机数据目录内）"
 fi
 
 pull_image "$MEMORY_CORE_IMAGE"
@@ -214,12 +214,14 @@ skill:
     maxResourceSizeBytes: 5000000
 YAML
 
+CORE_DATA_DIR="$(resolve_data_dir MEMORY_CORE_DATA_DIR "$HOME/.personal-memory-hub/core-data")"
+info "memory-core 数据目录（宿主机，唯一来源）= $CORE_DATA_DIR"
 info "启动 memory-core (image=$MEMORY_CORE_IMAGE, port=$MEMORY_CORE_PORT)"
 $DOCKER run -d --name "$CONTAINER" --restart unless-stopped \
   --network "$NETWORK" \
   --network-alias memory-core \
   -p "${MEMORY_CORE_PORT}:8420" \
-  -v "${MEMORY_CORE_VOLUME}:/data/tdai-memory" \
+  -v "${CORE_DATA_DIR}:/data/tdai-memory" \
   -v "$CORE_CONFIG_FILE:/data/config/tdai-gateway.yaml:ro" \
   -e TDAI_GATEWAY_PORT=8420 \
   -e TDAI_GATEWAY_HOST=0.0.0.0 \

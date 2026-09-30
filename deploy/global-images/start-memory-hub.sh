@@ -18,7 +18,7 @@ source "$SCRIPT_DIR/_lib.sh"
 
 load_env
 require_vars \
-  MEMORY_HUB_IMAGE PANEL_PORT KNOWLEDGE_PORT PANEL_VOLUME \
+  MEMORY_HUB_IMAGE PANEL_PORT KNOWLEDGE_PORT \
   MEMORY_LLM_BASE_URL MEMORY_LLM_API_KEY MEMORY_LLM_MODEL \
   KNOWLEDGE_PUBLIC_BASE_URL
 
@@ -88,6 +88,8 @@ rm_container_if_exists "$CONTAINER"
 
 # 内部 knowledge 通过 upstream memory 调 LLM 走 custom 模式，直接指向 MEMORY_LLM_*
 # LLM_MODE=custom → 不走 memory 的 LLM proxy，而是 knowledge 直连用户提供的端点
+PANEL_DATA_DIR_RESOLVED="$(resolve_data_dir PANEL_DATA_DIR "$HOME/.personal-memory-hub/panel-data")"
+info "memory-hub 数据目录（宿主机，唯一来源）= $PANEL_DATA_DIR_RESOLVED"
 info "启动 memory-hub (image=$MEMORY_HUB_IMAGE, panel=$PANEL_PORT knowledge=$KNOWLEDGE_PORT)"
 $DOCKER run -d --name "$CONTAINER" --restart unless-stopped \
   --network "$NETWORK" \
@@ -95,7 +97,7 @@ $DOCKER run -d --name "$CONTAINER" --restart unless-stopped \
   --add-host=host.docker.internal:host-gateway \
   -p "${PANEL_PORT}:8125" \
   -p "${KNOWLEDGE_PORT}:8424" \
-  -v "${PANEL_VOLUME}:/data/knowledge" \
+  -v "${PANEL_DATA_DIR_RESOLVED}:/data/knowledge" \
   -e PANEL_PORT=8125 \
   -e KNOWLEDGE_PORT=8424 \
   -e KNOWLEDGE_PUBLIC_BASE_URL="$KNOWLEDGE_PUBLIC_BASE_URL" \

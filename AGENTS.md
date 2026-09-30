@@ -26,7 +26,14 @@ cp .env.example .env
 Fill in `.env`:
 - `MEMORY_LLM_*` — leave as-is for now, step 3 sets this properly via
   `switch-llm-backend.sh`.
-- Everything else has sane defaults (ports, image tags, volume names).
+- Everything else has sane defaults (ports, image tags).
+- **Where the data lives:** the database is on your computer, in
+  `~/.personal-memory-hub/core-data` and `~/.personal-memory-hub/panel-data`
+  (override with `MEMORY_CORE_DATA_DIR` / `PANEL_DATA_DIR`). Containers only
+  bind-mount these folders, so Docker crashing, being reset or reinstalled
+  never deletes memory. Never store it in a Docker named volume. Back up by
+  stopping the containers and copying those folders together with
+  `deploy/global-images/.admin-key`.
 
 *If migrating:* copy over `.admin-key` (keeps the same admin identity/data)
 into `setup/`, then `cp setup/.admin-key deploy/global-images/.admin-key`

@@ -472,3 +472,20 @@ check_ports() {
   done
   (( conflict == 0 )) || die "存在端口冲突，请先释放端口后重试。"
 }
+
+# ── 宿主机数据目录（数据库的唯一真实来源）────────────────────────────────
+# 数据放在电脑上的真实文件夹（bind mount），不放 Docker named volume：
+# named volume 住在 Docker Desktop 的虚拟磁盘里，Docker Reset / 重装 / 崩溃
+# 就会连数据一起消失。用法：resolve_data_dir <ENV_VAR名> <默认路径>
+# 返回可直接给 `docker -v` 用的路径（Git Bash 下转成 C:/... 形式）。
+resolve_data_dir() {
+  local var="$1" default="$2" dir
+  eval "dir=\"\${$var:-}\""
+  dir="${dir:-$default}"
+  mkdir -p "$dir"
+  if command -v cygpath >/dev/null 2>&1; then
+    cygpath -m "$dir"
+  else
+    (cd "$dir" && pwd)
+  fi
+}

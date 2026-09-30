@@ -19,8 +19,8 @@ fi
 if [[ -f "$ENV_FILE" ]]; then
   set -a; source "$ENV_FILE"; set +a
 fi
-MEMORY_CORE_VOLUME="${MEMORY_CORE_VOLUME:-tdai-memory-core-data}"
-PANEL_VOLUME="${PANEL_VOLUME:-tdai-panel-data}"
+MEMORY_CORE_DATA_DIR="${MEMORY_CORE_DATA_DIR:-$HOME/.personal-memory-hub/core-data}"
+PANEL_DATA_DIR="${PANEL_DATA_DIR:-$HOME/.personal-memory-hub/panel-data}"
 MONGO_LOCAL_CONTAINER="${MONGO_LOCAL_CONTAINER:-tdai-mongo-local}"
 
 for c in tdai-proxy tdai-memory-hub tdai-memory-core "$MONGO_LOCAL_CONTAINER"; do
@@ -33,8 +33,14 @@ for c in tdai-proxy tdai-memory-hub tdai-memory-core "$MONGO_LOCAL_CONTAINER"; d
 done
 
 if (( PURGE == 1 )); then
-  warn "--purge 已启用：删除 volume + 网络 + admin key 文件"
-  for v in "$MEMORY_CORE_VOLUME" "$PANEL_VOLUME" mongo-local-db mongo-local-configdb mongo-local-mongot; do
+  warn "--purge 已启用：移开数据目录 + 删除网络 + admin key 文件"
+  # 宿主机数据目录不直接删除：改名成 *.purged-<时间>，确认不需要再自己删。
+  for d in "$MEMORY_CORE_DATA_DIR" "$PANEL_DATA_DIR"; do
+    if [[ -d "$d" ]]; then
+      mv "$d" "$d.purged-$(date +%Y%m%d%H%M%S)" && ok "已移开数据目录 $d（改名为 .purged-*，未删除）" || warn "移开 $d 失败"
+    fi
+  done
+  for v in mongo-local-db mongo-local-configdb mongo-local-mongot; do
     if $DOCKER volume inspect "$v" >/dev/null 2>&1; then
       $DOCKER volume rm "$v" >/dev/null && ok "已删除 volume $v" || warn "删除 volume $v 失败"
     fi

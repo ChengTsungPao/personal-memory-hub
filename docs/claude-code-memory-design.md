@@ -4,6 +4,16 @@ How Claude Code sessions map onto MemoryCore memory. Setup steps live in
 `AGENTS.md`; hook/MCP details in `agents/claude-code/README.md`. This file is
 the design reference — update it whenever the mapping below changes.
 
+## Where the data lives
+
+The single source of truth is a host folder, not Docker:
+`~/.personal-memory-hub/core-data` (MemoryCore: SQLite, L0-L3, agent/user/team
+metadata, vectors) and `~/.personal-memory-hub/panel-data` (Panel/knowledge).
+Containers bind-mount them. Docker crash, `docker rm`, Docker Desktop reset or
+reinstall cannot delete it. Lesson from 2026-09-30: a Docker named volume lives
+inside Docker Desktop's virtual disk, and a Reset deleted all memory. Backup =
+stop containers, copy both folders plus `deploy/global-images/.admin-key`.
+
 ## Memory layers (per agent)
 
 | Layer | What | Produced by |

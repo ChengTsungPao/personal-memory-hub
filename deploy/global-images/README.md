@@ -63,10 +63,10 @@ cd TencentDB-Agent-Memory/deploy/global-images
   `stop-all.sh --purge` 一并清理）；
 - 想用外部 Mongo（云 Atlas / 自建带 mongot 的副本集），在 `.env` 填
   `MONGODB_ENDPOINT` 即可；
-- **切换存储后端不会迁移已有数据。** sqlite 在 `MEMORY_CORE_VOLUME` 卷，mongo
+- **切换存储后端不会迁移已有数据。** sqlite 在 `MEMORY_CORE_DATA_DIR` 数据目录，mongo
   在 `mongo-local-*` 卷（或外部实例），切换后原数据仍留在原后端。当前版本需
   自行备份并手工迁移；后续版本将提供官方迁移工具。L2/L3 文件两种模式都在
-  `MEMORY_CORE_VOLUME` 卷。
+  `MEMORY_CORE_DATA_DIR` 数据目录。
 
 ### 干跑校验（可选）
 
@@ -186,16 +186,30 @@ memory-core 通过 `MEMORY_PROMPT_MODE` 切换 L1/L2/L3 pipeline 的提示词族
 
 ## 数据持久化
 
-- `tdai-memory-core-data`（named volume）→ memory-core 的 SQLite / 记忆数据
-- `tdai-panel-data`（named volume）→ memory-hub 里 knowledge 的 SQLite / git clone / wiki 文件
+**数据库的唯一真实来源是电脑上的文件夹，不是 Docker。** 容器只是把这些文件夹挂进去
+（bind mount），所以 Docker 崩溃、`docker rm`、Docker Desktop Reset / 重装，数据都还在。
 
-`docker volume rm` 之前数据一直保留。改名可在 `.env` 里改 `MEMORY_CORE_VOLUME` / `PANEL_VOLUME`。
+| 宿主机文件夹（默认） | 内容 |
+|---|---|
+| `~/.personal-memory-hub/core-data` | memory-core：SQLite（L0–L3、agent、user、team 元数据）、scene_blocks、向量库 |
+| `~/.personal-memory-hub/panel-data` | memory-hub：knowledge 的 SQLite / wiki 文件 |
+
+- Windows 上 `~` 即 `C:/Users/<你>`，macOS 上即 `/Users/<你>`（Docker Desktop 默认已共享 `/Users`；
+  若你改放到别的位置，需在 Docker Desktop → Settings → Resources → File sharing 加入该路径）；想放别处（例如另一颗硬盘）就在 `.env` 设
+  `MEMORY_CORE_DATA_DIR` / `PANEL_DATA_DIR`（绝对路径）。
+- 脚本在 macOS 自带的 bash 3.2 与 Git Bash 下都能跑（路径转换只在有 `cygpath` 时才做）。macOS 上
+  SQLite 放在 bind mount 的实际表现**尚未在 Mac 上实测**；Windows 已实测（写入落盘、删容器重建后仍在）。
+- **备份 = 复制这两个文件夹**（先 `./stop-all.sh` 停容器，避免复制到写到一半的 SQLite）。
+- 之所以不用 Docker named volume：它藏在 Docker Desktop 的虚拟磁盘
+  （`%LOCALAPPDATA%/Docker/wsl/disk/docker_data.vhdx`）里，Docker Reset 会整颗删掉、
+  连数据一起消失（2026-09-30 实际发生过一次）。
+- `.admin-key` 与数据目录是一对：数据目录里的 admin 用户对应这把 key，备份/迁移时要一起带走。
 
 ## 停止 / 清理
 
 ```bash
-./stop-all.sh            # 停容器，保留 volume（下次启动数据还在）
-./stop-all.sh --purge    # 停容器 + 删 volume + 删网络（彻底清理）
+./stop-all.sh            # 停容器，数据目录原样保留（下次启动数据还在）
+./stop-all.sh --purge    # 停容器 + 数据目录改名成 *.purged-<时间>（不直接删）+ 删网络 + 删 admin key
 ```
 
 ## 查看日志
