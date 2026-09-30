@@ -199,11 +199,21 @@ memory-core 通过 `MEMORY_PROMPT_MODE` 切换 L1/L2/L3 pipeline 的提示词族
   `MEMORY_CORE_DATA_DIR` / `PANEL_DATA_DIR`（绝对路径）。
 - 脚本在 macOS 自带的 bash 3.2 与 Git Bash 下都能跑（路径转换只在有 `cygpath` 时才做）。macOS 上
   SQLite 放在 bind mount 的实际表现**尚未在 Mac 上实测**；Windows 已实测（写入落盘、删容器重建后仍在）。
-- **备份 = 复制这两个文件夹**（先 `./stop-all.sh` 停容器，避免复制到写到一半的 SQLite）。
+- **备份 = 复制整个 `~/.personal-memory-hub/`**（先 `./stop-all.sh` 停容器，避免复制到写到一半的 SQLite）。
 - 之所以不用 Docker named volume：它藏在 Docker Desktop 的虚拟磁盘
   （`%LOCALAPPDATA%/Docker/wsl/disk/docker_data.vhdx`）里，Docker Reset 会整颗删掉、
   连数据一起消失（2026-09-30 实际发生过一次）。
-- `.admin-key` 与数据目录是一对：数据目录里的 admin 用户对应这把 key，备份/迁移时要一起带走。
+- 同一个文件夹里还有 `admin-key`（admin user_key，与数据库配对）和 `agents.json`
+  （git 项目 → agent_id 对应表，Claude Code hooks/MCP 用；少了它新电脑会为同一个 repo
+  重复注册 agent）。可用 `MEMORY_CORE_ADMIN_KEY_FILE` 覆盖 key 位置。
+
+### 搬到另一台电脑
+
+1. 旧电脑：`./stop-all.sh`（停容器，避免复制到写一半的 SQLite）。
+2. 把整个 `~/.personal-memory-hub/` 复制到新电脑的家目录（同名）。里面没有写死本机绝对路径。
+3. 新电脑：clone 本 repo，按根目录 `AGENTS.md` 启动。脚本直接使用这份数据与 admin-key，
+   Claude Code 用的 team_id / user_id 也不变（存在数据库里）。
+4. 不需要带：`~/.memory-tdai/claude-code/`（本机对话文件的读取进度，每台电脑各自的）。
 
 ## 停止 / 清理
 

@@ -11,9 +11,6 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
-import { fileURLToPath } from "node:url";
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 /** Sentinel project key for every chat that isn't inside a git repo. */
 const ADHOC_KEY = "adhoc";
@@ -77,27 +74,27 @@ function deriveProjectKey(cwd) {
 // Local project -> agent_id registry
 // ============================
 
-function registryPath(stateDir) {
-  return path.join(stateDir, "agents.json");
-}
+/** Lives with the database (not with machine-local cursors) so it moves with the data to a new machine. */
+const HUB_DIR = path.join(os.homedir(), ".personal-memory-hub");
+const REGISTRY_FILE = process.env.TDAI_REGISTRY_FILE ?? path.join(HUB_DIR, "agents.json");
 
-function loadRegistry(stateDir) {
+function loadRegistry() {
   try {
-    return JSON.parse(readFileSync(registryPath(stateDir), "utf8"));
+    return JSON.parse(readFileSync(REGISTRY_FILE, "utf8"));
   } catch {
     return {};
   }
 }
 
-function saveRegistry(stateDir, registry) {
-  mkdirSync(stateDir, { recursive: true });
-  writeFileSync(registryPath(stateDir), JSON.stringify(registry, null, 2), "utf8");
+function saveRegistry(registry) {
+  mkdirSync(path.dirname(REGISTRY_FILE), { recursive: true });
+  writeFileSync(REGISTRY_FILE, JSON.stringify(registry, null, 2), "utf8");
 }
 
 /**
  * Resolve a project key to a real MemoryCore agent_id, registering a new
  * agent (which auto-provisions its chat_memory asset) the first time this
- * project key is seen. Cached in `<stateDir>/agents.json` after that.
+ * project key is seen. Cached in `~/.personal-memory-hub/agents.json` after that.
  *
  * MemoryCore's HTTP API needs the admin `x-tdai-user-key` (not the plain
  * `Bearer local` the hooks otherwise use) to call `/v3/meta/agent/create` —
@@ -106,7 +103,7 @@ function saveRegistry(stateDir, registry) {
  * error — registration is a nice-to-have, never worth blocking a hook over.
  */
 async function resolveAgentId(cfg, projectKey, projectName) {
-  const registry = loadRegistry(cfg.stateDir);
+  const registry = loadRegistry();
   if (registry[projectKey]) return registry[projectKey];
 
   if (!cfg.adminKey) return null;
@@ -126,7 +123,7 @@ async function resolveAgentId(cfg, projectKey, projectName) {
     if (!res.ok || payload.code !== 0 || !payload.data?.agent_id) return null;
 
     registry[projectKey] = payload.data.agent_id;
-    saveRegistry(cfg.stateDir, registry);
+    saveRegistry(registry);
     return payload.data.agent_id;
   } catch {
     return null;
@@ -144,8 +141,7 @@ async function resolveAgentId(cfg, projectKey, projectName) {
 export async function loadConfig(cwd = process.cwd()) {
   const endpoint = (process.env.TDAI_ENDPOINT ?? "http://127.0.0.1:8420").replace(/\/+$/, "");
   const stateDir = process.env.TDAI_STATE_DIR ?? path.join(os.homedir(), ".memory-tdai", "claude-code");
-  const adminKeyFile = process.env.TDAI_ADMIN_KEY_FILE
-    ?? path.join(__dirname, "..", "..", "..", "deploy", "global-images", ".admin-key");
+  const adminKeyFile = process.env.TDAI_ADMIN_KEY_FILE ?? path.join(HUB_DIR, "admin-key");
 
   const cfg = {
     endpoint,
@@ -160,7 +156,7 @@ export async function loadConfig(cwd = process.cwd()) {
     taskId: process.env.TDAI_TASK_ID ?? "",
     /** Per-request timeout. Hooks must never hang a turn. */
     timeoutMs: Number(process.env.TDAI_TIMEOUT_MS ?? 8000),
-    /** Where capture cursors + the project->agent_id registry live. */
+    /** Where machine-local capture cursors live (the agent registry is in HUB_DIR). */
     stateDir,
     /** Admin user_key, only used to auto-register a new agent per project. */
     adminKey: existsSync(adminKeyFile) ? readFileSync(adminKeyFile, "utf8").trim() : "",

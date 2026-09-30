@@ -111,7 +111,7 @@ it does, create the admin by hand:
 ```bash
 KEY="sk-mem-$(openssl rand -base64 48 | tr -dc 'A-Za-z0-9' | head -c 32)"
 curl -X POST http://127.0.0.1:8420/v3/internal/meta/user/init-admin   -H "Content-Type: application/json" -H "Authorization: Bearer local"   -H "x-tdai-service-id: default"   -d "{\"username\":\"admin\",\"user_key\":\"$KEY\"}"
-printf %s "$KEY" > .admin-key
+mkdir -p ~/.personal-memory-hub && printf %s "$KEY" > ~/.personal-memory-hub/admin-key
 ```
 
 Note the port (default `8420`) and the `sk-mem-…` user key it prints.
@@ -241,8 +241,9 @@ settings file, so no secret is ever committed.
 | `TDAI_USER_ID` | `default` | |
 | `TDAI_TASK_ID` | *(unset)* | Optional; omitted from requests when empty |
 | `TDAI_TIMEOUT_MS` | `8000` | Per-request timeout |
-| `TDAI_STATE_DIR` | `~/.memory-tdai/claude-code` | Where capture cursors + the project→agent_id registry (`agents.json`) live |
-| `TDAI_ADMIN_KEY_FILE` | `deploy/global-images/.admin-key` (relative to this repo) | MemoryCore admin `user_key`, needed only to auto-register a new agent the first time a project is seen — see below |
+| `TDAI_STATE_DIR` | `~/.memory-tdai/claude-code` | Machine-local capture cursors |
+| `TDAI_REGISTRY_FILE` | `~/.personal-memory-hub/agents.json` | project→agent_id registry; lives with the database so it moves with it |
+| `TDAI_ADMIN_KEY_FILE` | `~/.personal-memory-hub/admin-key` | MemoryCore admin `user_key`, needed only to auto-register a new agent the first time a project is seen — see below |
 | `TDAI_DEBUG` | *(unset)* | `1` logs hook diagnostics to stderr |
 
 ### Memory isolation: why `agent_id` is per-project, not per-session
@@ -301,8 +302,8 @@ remembered. `lib/config.mjs`'s `loadConfig(cwd)` does this automatically
    with no project has no stable identity to accumulate memory around
    anyway, and giving each one its own agent meant the Panel accumulated a
    new entry per one-off chat, forever, with no way back to "default".
-2. Look up that project key in `<TDAI_STATE_DIR>/agents.json` (a flat JSON
-   map, alongside the capture cursors). A hit returns the cached `agent_id`
+2. Look up that project key in `~/.personal-memory-hub/agents.json` (a flat
+   JSON map, kept next to the database so it moves with it). A hit returns the cached `agent_id`
    immediately — no network call.
 3. On a miss (first time this project is seen), `POST
    /v3/meta/agent/create` with `team_id`, `owner_user_id: TDAI_USER_ID`, and
@@ -319,8 +320,8 @@ remembered. `lib/config.mjs`'s `loadConfig(cwd)` does this automatically
 endpoints authenticate via an `x-tdai-user-key` header carrying a real
 MemoryCore user key — the `Bearer local` placeholder the hooks send on
 every other (data-plane) call doesn't work here and gets a plain 401. Set
-`TDAI_ADMIN_KEY_FILE` to point at `deploy/global-images/.admin-key` (the
-default already does, assuming this repo's own layout); without it,
+`TDAI_ADMIN_KEY_FILE` to point at the admin key (default
+`~/.personal-memory-hub/admin-key`, where `start-memory-core.sh` writes it); without it,
 registration silently no-ops and everything falls back to `"default"`.
 
 The two hooks pass `payload.cwd` from the hook's stdin payload; the MCP

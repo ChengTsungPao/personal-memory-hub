@@ -26,7 +26,7 @@ MEMORY_CORE_GATEWAY_API_KEY="${MEMORY_CORE_GATEWAY_API_KEY-}"
 MEMORY_CORE_ADMIN_USERNAME="${MEMORY_CORE_ADMIN_USERNAME:-admin}"
 
 # admin user_key 持久化位置（宿主机侧；volume 数据被清后需一并删掉此文件）
-ADMIN_KEY_FILE="${MEMORY_CORE_ADMIN_KEY_FILE:-$SCRIPT_DIR/.admin-key}"
+ADMIN_KEY_FILE="${MEMORY_CORE_ADMIN_KEY_FILE:-$HOME/.personal-memory-hub/admin-key}"
 
 if [[ -n "$MEMORY_CORE_GATEWAY_API_KEY" ]]; then
   warn "MEMORY_CORE_GATEWAY_API_KEY 非空 —— proxy 的 sessionInit/auth 目前会因缺 Bearer 而失败。"
@@ -293,6 +293,7 @@ case "$init_resp" in
     ok "admin user 已创建"
     # 落盘 key（把宿主机 file 的权限收紧）
     umask 077
+    mkdir -p "$(dirname "$ADMIN_KEY_FILE")"
     echo -n "$ADMIN_KEY" > "$ADMIN_KEY_FILE"
     ok "  admin user_key 已保存到 $ADMIN_KEY_FILE"
     ;;

@@ -9,10 +9,13 @@ the design reference — update it whenever the mapping below changes.
 The single source of truth is a host folder, not Docker:
 `~/.personal-memory-hub/core-data` (MemoryCore: SQLite, L0-L3, agent/user/team
 metadata, vectors) and `~/.personal-memory-hub/panel-data` (Panel/knowledge).
-Containers bind-mount them. Docker crash, `docker rm`, Docker Desktop reset or
+The same folder holds `admin-key` (paired with the database) and `agents.json`
+(project → agent map), so `~/.personal-memory-hub/` alone is the whole memory:
+back it up or move it to another machine by copying that one folder (containers
+stopped). Only machine-local capture cursors stay in `~/.memory-tdai/`.
+Containers bind-mount it. Docker crash, `docker rm`, Docker Desktop reset or
 reinstall cannot delete it. Lesson from 2026-09-30: a Docker named volume lives
-inside Docker Desktop's virtual disk, and a Reset deleted all memory. Backup =
-stop containers, copy both folders plus `deploy/global-images/.admin-key`.
+inside Docker Desktop's virtual disk, and a Reset deleted all memory.
 
 ## Memory layers (per agent)
 
@@ -30,7 +33,7 @@ stop containers, copy both folders plus `deploy/global-images/.admin-key`.
 - Project key: git `origin` remote hash → else git root-commit hash → else
   the shared `adhoc` bucket (agent name `adhoc-chat`).
 - The key resolves to a real MemoryCore `agent_id` via
-  `~/.memory-tdai/claude-code/agents.json`. First sight of a new key calls
+  `~/.personal-memory-hub/agents.json`. First sight of a new key calls
   `/v3/meta/agent/create` (needs the admin key), which also provisions that
   agent's single `chat_memory` asset (`chat_memory-{team}-{agent}`).
 - Failure to register falls back to the `default` agent.

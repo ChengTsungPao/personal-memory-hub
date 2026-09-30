@@ -33,7 +33,7 @@ for c in tdai-proxy tdai-memory-hub tdai-memory-core "$MONGO_LOCAL_CONTAINER"; d
 done
 
 if (( PURGE == 1 )); then
-  warn "--purge 已启用：移开数据目录 + 删除网络 + admin key 文件"
+  warn "--purge 已启用：移开数据目录与 admin key + 删除网络"
   # 宿主机数据目录不直接删除：改名成 *.purged-<时间>，确认不需要再自己删。
   for d in "$MEMORY_CORE_DATA_DIR" "$PANEL_DATA_DIR"; do
     if [[ -d "$d" ]]; then
@@ -50,9 +50,9 @@ if (( PURGE == 1 )); then
   fi
   # admin key 与 volume 强绑定，purge volume 必须同步清 key，否则下次启动会读到
   # 旧 key 但 volume 是新的，auth 校验会失败。
-  ADMIN_KEY_FILE="${MEMORY_CORE_ADMIN_KEY_FILE:-$SCRIPT_DIR/.admin-key}"
+  ADMIN_KEY_FILE="${MEMORY_CORE_ADMIN_KEY_FILE:-$HOME/.personal-memory-hub/admin-key}"
   if [[ -f "$ADMIN_KEY_FILE" ]]; then
-    rm -f "$ADMIN_KEY_FILE" && ok "已删除 admin key 文件 $ADMIN_KEY_FILE"
+    mv "$ADMIN_KEY_FILE" "$ADMIN_KEY_FILE.purged-$(date +%Y%m%d%H%M%S)" && ok "已移开 admin key 文件 $ADMIN_KEY_FILE（未删除）"
   fi
   # 顺带清 proxy / memory-core 生成的 config
   PROXY_CFG_DIR="${PROXY_CONFIG_DIR:-$SCRIPT_DIR/.proxy-config}"

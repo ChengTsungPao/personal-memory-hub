@@ -7,14 +7,15 @@ elsewhere. Written to be followed by any coding agent (Claude Code, Codex,
 etc.) on any OS — everything below is plain bash/Docker/Node, nothing here
 is Claude-Code-specific except step 5.
 
-**Bringing secrets over from another machine:** none of the steps below
-*require* it — every secret is either generated fresh on first run
-(`.admin-key`) or obtained interactively per-machine (`claude setup-token`,
-an OpenRouter key). If you're migrating an *existing* deployment (want to
-keep the same MemoryCore data/identity rather than start fresh), drop the
-files listed under "if migrating" into a `setup/` folder at the repo root
-(gitignored — create it only if you actually have files to put there) and
-this doc tells you where each one goes.
+**Moving memory to another machine:** everything that *is* memory lives in
+one folder, `~/.personal-memory-hub/` (database + admin key + project→agent
+map, see step 1). Copy that folder to the new machine's home directory before
+step 1 and the new machine continues with the same memory, admin identity and
+agents. Without it you start fresh (a new admin key is generated). Other
+secrets are per-machine and obtained interactively (`claude setup-token`, an
+OpenRouter key); if you'd rather carry those too, drop them into a `setup/`
+folder at the repo root (gitignored — create it only if you have files to put
+there), steps below say where each goes.
 
 ## 1. Core services (memory-core, memory-hub, Panel)
 
@@ -27,19 +28,25 @@ Fill in `.env`:
 - `MEMORY_LLM_*` — leave as-is for now, step 3 sets this properly via
   `switch-llm-backend.sh`.
 - Everything else has sane defaults (ports, image tags).
-- **Where the data lives:** the database is on your computer, in
-  `~/.personal-memory-hub/core-data` and `~/.personal-memory-hub/panel-data`
-  (override with `MEMORY_CORE_DATA_DIR` / `PANEL_DATA_DIR`). Containers only
-  bind-mount these folders, so Docker crashing, being reset or reinstalled
-  never deletes memory. Never store it in a Docker named volume. Back up by
-  stopping the containers and copying those folders together with
-  `deploy/global-images/.admin-key`.
+- **Where the data lives — one folder, `~/.personal-memory-hub/`:**
 
-*If migrating:* copy over `.admin-key` (keeps the same admin identity/data)
-into `setup/`, then `cp setup/.admin-key deploy/global-images/.admin-key`
-before first run — otherwise a fresh random one gets generated (fine for a
-new deployment, but a fresh key can't `x-tdai-user-key`-authenticate against
-data written under the old one).
+  | Path | What |
+  |---|---|
+  | `core-data/` | MemoryCore database: L0–L3, agents, users, teams, vectors |
+  | `panel-data/` | Panel / knowledge database |
+  | `admin-key` | admin `user_key`; paired with the database, must travel with it |
+  | `agents.json` | git-project → agent_id map; without it a new machine would register duplicate agents for the same repos |
+
+  Override paths with `MEMORY_CORE_DATA_DIR` / `PANEL_DATA_DIR` /
+  `MEMORY_CORE_ADMIN_KEY_FILE` (scripts) and `TDAI_ADMIN_KEY_FILE` /
+  `TDAI_REGISTRY_FILE` (hooks/MCP). Containers only bind-mount these, so
+  Docker crashing, being reset or reinstalled never deletes memory. Never
+  store it in a Docker named volume.
+- **Backup / move to another machine:** `bash stop-all.sh`, copy the whole
+  `~/.personal-memory-hub/` folder (to the new machine's home, same name),
+  then start. Machine-local capture cursors (`~/.memory-tdai/claude-code/`)
+  are deliberately *not* in it — they track that machine's own Claude Code
+  transcript files.
 
 ```bash
 MSYS_NO_PATHCONV=1 bash start-all.sh   # or start-memory-core.sh + start-memory-hub.sh separately
@@ -136,7 +143,7 @@ that registration fail — everything then silently collapses back into one
 # user_id — from the admin key generated in step 1
 curl -s -X POST http://127.0.0.1:8420/v3/meta/auth/verify \
   -H "Content-Type: application/json" -H "x-tdai-service-id: default" \
-  -d "{\"user_key\":\"$(cat deploy/global-images/.admin-key)\"}"
+  -d "{\"user_key\":\"$(cat ~/.personal-memory-hub/admin-key)\"}"
 # -> data.user.user_id, e.g. usr-xxxxxxxxxx
 ```
 
@@ -210,9 +217,9 @@ always go to the session's own agent.
 leave it unset and the right agent is picked per project automatically: one
 real MemoryCore agent per git repo (same repo across sessions/worktrees =
 same agent), one shared `adhoc-chat` agent for chats outside any git repo.
-The mapping is cached in `~/.memory-tdai/claude-code/agents.json`.
+The mapping is cached in `~/.personal-memory-hub/agents.json`.
 Registering a new agent needs the admin key (`TDAI_ADMIN_KEY_FILE`,
-defaults to `deploy/global-images/.admin-key` in this repo).
+defaults to `~/.personal-memory-hub/admin-key`).
 
 **Changes only apply to new sessions.** Claude Code reads the `env` block
 and connects MCP servers once at session start — an already-open session

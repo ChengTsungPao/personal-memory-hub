@@ -58,7 +58,7 @@ ok "═══ 全部服务已就绪 ══════════════�
 print_endpoints
 
 # 打印 Claude Code / proxy 使用命令
-ADMIN_KEY_FILE="${MEMORY_CORE_ADMIN_KEY_FILE:-$SCRIPT_DIR/.admin-key}"
+ADMIN_KEY_FILE="${MEMORY_CORE_ADMIN_KEY_FILE:-$HOME/.personal-memory-hub/admin-key}"
 if [[ -s "$ADMIN_KEY_FILE" ]]; then
   ADMIN_KEY=$(cat "$ADMIN_KEY_FILE")
   UPSTREAM_MODEL="${PROXY_UPSTREAM_MODEL:-<your-model>}"
