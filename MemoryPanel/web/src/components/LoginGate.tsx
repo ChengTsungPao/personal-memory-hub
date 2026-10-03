@@ -114,6 +114,9 @@ export async function resumeSession(): Promise<AuthState | null> {
       }
       // 优先用后端刚返回的最新 user；缺失时回退到缓存的 user。
       const user = res.user ?? session.user;
+      // API 调用经 getCurrentUser() 读 localStorage 里的 user；不写回则会用旧 user_id
+      // （同一 user_key 在重建的数据库里对应新 user_id 时，team/list 查空）。
+      if (res.user) setPanelSession({ ...session, user: res.user });
       const auth = toAuthState(user, session.instanceId, session.instanceName ?? '');
       writeAuthCache(auth);
       return auth;
