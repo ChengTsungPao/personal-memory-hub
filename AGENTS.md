@@ -71,6 +71,20 @@ Uncomment the `MEMORY_EMBEDDING_*` block in `.env` (already points at
 keyword-only (BM25) search instead — everything still works, just without
 semantic ranking.
 
+**Keep the embedding model loaded:** set `OLLAMA_KEEP_ALIVE=-1` for the
+Ollama server, then restart Ollama. Every L0 write embeds each message
+synchronously; by default Ollama unloads a model after 5 idle minutes, and
+reloading bge-m3 from a slow disk (e.g. models on an HDD) took ~16s — the
+first message of that batch was stored with no vector, and the Stop hook
+timed out and re-sent the batch later. `-1` keeps it resident (~0.7 GB VRAM).
+- Windows: `[Environment]::SetEnvironmentVariable('OLLAMA_KEEP_ALIVE','-1','User')`
+- macOS: `launchctl setenv OLLAMA_KEEP_ALIVE -1` (re-run after reboot, or add
+  it to a LaunchAgent)
+- Verify: `ollama ps` shows `UNTIL Forever` for `bge-m3` after one embedding call.
+
+Note: the Ollama desktop app keeps its own model-folder setting
+(Settings → Model location) that overrides `OLLAMA_MODELS`; change it there.
+
 ## 3. Pick an LLM backend for L1/L2/L3 extraction
 
 ```bash
@@ -177,7 +191,7 @@ absolute path (forward slashes on Windows, e.g.
       { "hooks": [ {
         "type": "command", "command": "node",
         "args": ["<REPO>/agents/claude-code/hooks/memory-capture.mjs"],
-        "timeout": 15
+        "timeout": 45
       } ] }
     ]
   }

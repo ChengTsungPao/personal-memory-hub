@@ -54,7 +54,7 @@ async function main() {
     return;
   }
 
-  const client = new CoreClient(cfg);
+  const client = new CoreClient({ ...cfg, timeoutMs: cfg.captureTimeoutMs });
   const accepted = await client.addConversation(sessionId, messages);
   debugLog(cfg, `captured ${accepted}/${messages.length} messages for ${sessionId}`);
 

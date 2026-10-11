@@ -240,7 +240,8 @@ settings file, so no secret is ever committed.
 | `TDAI_AGENT_ID` | *(auto-registered per project, see below — set this only to force one fixed value)* | |
 | `TDAI_USER_ID` | `default` | |
 | `TDAI_TASK_ID` | *(unset)* | Optional; omitted from requests when empty |
-| `TDAI_TIMEOUT_MS` | `8000` | Per-request timeout |
+| `TDAI_TIMEOUT_MS` | `8000` | Per-request timeout (SessionStart recall, MCP) |
+| `TDAI_CAPTURE_TIMEOUT_MS` | `30000` | Timeout for the Stop-hook write. Longer because each message is embedded; a cold embedding model can take 15s+. Keep the Stop hook's own `timeout` above it (template: 45s) |
 | `TDAI_STATE_DIR` | `~/.memory-tdai/claude-code` | Machine-local capture cursors |
 | `TDAI_REGISTRY_FILE` | `~/.personal-memory-hub/agents.json` | project→agent_id registry; lives with the database so it moves with it |
 | `TDAI_ADMIN_KEY_FILE` | `~/.personal-memory-hub/admin-key` | MemoryCore admin `user_key`, needed only to auto-register a new agent the first time a project is seen — see below |

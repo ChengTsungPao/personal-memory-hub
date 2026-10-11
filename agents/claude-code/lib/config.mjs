@@ -156,6 +156,12 @@ export async function loadConfig(cwd = process.cwd()) {
     taskId: process.env.TDAI_TASK_ID ?? "",
     /** Per-request timeout. Hooks must never hang a turn. */
     timeoutMs: Number(process.env.TDAI_TIMEOUT_MS ?? 8000),
+    /**
+     * Longer timeout for the Stop-hook write: conversation/add embeds every
+     * message, and a cold embedding model can take 15s+ to load. A timeout
+     * here leaves the cursor behind, so the batch is re-sent (duplicated) later.
+     */
+    captureTimeoutMs: Number(process.env.TDAI_CAPTURE_TIMEOUT_MS ?? 30000),
     /** Where machine-local capture cursors live (the agent registry is in HUB_DIR). */
     stateDir,
     /** Admin user_key, only used to auto-register a new agent per project. */

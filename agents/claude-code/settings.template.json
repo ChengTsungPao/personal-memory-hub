@@ -41,7 +41,7 @@
             "type": "command",
             "command": "node",
             "args": ["ABSOLUTE_PATH_TO_REPO/agents/claude-code/hooks/memory-capture.mjs"],
-            "timeout": 15
+            "timeout": 45
           }
         ]
       }
