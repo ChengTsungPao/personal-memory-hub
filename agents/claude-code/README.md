@@ -308,8 +308,9 @@ remembered. `lib/config.mjs`'s `loadConfig(cwd)` does this automatically
    immediately — no network call.
 3. On a miss (first time this project is seen), `POST
    /v3/meta/agent/create` with `team_id`, `owner_user_id: TDAI_USER_ID`, and
-   `name` set to the repo name (parsed from the remote URL, or the folder
-   name when there's no remote — `"adhoc-chat"` for the adhoc bucket). The
+   `name` set to the repo name (parsed from the remote URL; with no remote,
+   the main repo's folder name — not the worktree folder, which tools like
+   Orca name randomly — `"adhoc-chat"` for the adhoc bucket). The
    response's `agent_id` is cached into `agents.json` and returned.
 4. Registration failure of any kind (see below) — or no git repo *and* the
    admin key missing — falls back to the literal string `"default"`, the

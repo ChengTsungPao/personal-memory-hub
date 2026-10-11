@@ -60,7 +60,17 @@ function deriveProjectKey(cwd) {
         .toString().trim().split("\n")[0];
       if (rootCommit) {
         const key = `git-root:${rootCommit.slice(0, 16)}`;
-        const name = path.basename(cwd) || key;
+        // Name after the main repo, not the worktree folder: worktree folders are
+        // often throwaway names (e.g. Orca's random ones) shared by nothing else.
+        let repoDir = cwd;
+        try {
+          const commonDir = execFileSync("git", ["rev-parse", "--path-format=absolute", "--git-common-dir"], gitOpts)
+            .toString().trim();
+          if (commonDir) repoDir = path.dirname(commonDir);
+        } catch {
+          // older git or odd layout — fall back to the cwd folder name
+        }
+        const name = path.basename(repoDir) || path.basename(cwd) || key;
         return { key, name };
       }
     } catch {
