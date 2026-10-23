@@ -28,6 +28,11 @@ import type { LlmConfig } from "./config.js";
 import { getGlobalLlmConcurrency } from "./config.js";
 import { buildProgressFn } from "./callback.js";
 import { AutoSyncScheduler, resolveAutoSyncConfig, type AutoSyncConfig } from "./store/auto-sync-scheduler.js";
+import { resolveConnectorsConfig } from "./connectors/config.js";
+import { createConnectorStore } from "./connectors/store.js";
+import { NotionConnector } from "./connectors/notion.js";
+import { ConnectorSyncService } from "./connectors/sync-service.js";
+import { ConnectorScheduler } from "./connectors/scheduler.js";
 
 const log = createLogger("knowledge-module");
 
@@ -68,6 +73,9 @@ export interface KnowledgeModule {
   autoSyncScheduler: AutoSyncScheduler;
   /** 定时自动同步的解析后配置（挂载 admin 路由时透出）。 */
   autoSyncConfig: AutoSyncConfig;
+  /** Opt-in external-source sync (Notion, ...); inert unless KNOWLEDGE_CONNECTORS_ENABLED. */
+  connectorService: ConnectorSyncService;
+  connectorScheduler: ConnectorScheduler;
 }
 
 /**
@@ -293,5 +301,20 @@ export function createKnowledgeModule(config: KnowledgeModuleConfig): KnowledgeM
   });
   autoSyncScheduler.start();
 
-  return { wikiService, cgService, wikiMgr, store, instancePool, llmBindingStore, autoSyncScheduler, autoSyncConfig };
+  // ── Connectors: opt-in periodic import of external knowledge (Notion, ...) into a wiki ──
+  const connectorsConfig = resolveConnectorsConfig();
+  const connectorService = new ConnectorSyncService({
+    config: connectorsConfig,
+    store: createConnectorStore(db),
+    wikiService,
+    connectors: [new NotionConnector({ token: connectorsConfig.notion.token })],
+    wikiNames: { notion: connectorsConfig.notion.wikiName },
+  });
+  const connectorScheduler = new ConnectorScheduler({ service: connectorService, config: connectorsConfig });
+  connectorScheduler.start();
+
+  return {
+    wikiService, cgService, wikiMgr, store, instancePool, llmBindingStore, autoSyncScheduler, autoSyncConfig,
+    connectorService, connectorScheduler,
+  };
 }

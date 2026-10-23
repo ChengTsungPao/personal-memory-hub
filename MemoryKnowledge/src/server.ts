@@ -26,6 +26,7 @@ import { createToolsRoutes } from "./routes/tools.js";
 import { createHealthRoutes } from "./routes/health.js";
 import { createLlmBindingRoutes } from "./routes/llm-binding.js";
 import { createAutoSyncRoutes } from "./routes/auto-sync.js";
+import { createConnectorRoutes } from "./routes/connectors.js";
 import { accessLog } from "./middleware/response-envelope.js";
 import { errorHandler } from "./middleware/error-handler.js";
 import { createServiceAuthMiddleware } from "./middleware/auth.js";
@@ -97,6 +98,11 @@ export function createApp() {
   api.route("/", createAutoSyncRoutes({
     scheduler: knowledgeModule.autoSyncScheduler,
     config: knowledgeModule.autoSyncConfig,
+  }));
+
+  // connectors — opt-in external knowledge source sync (Notion, ...)
+  api.route("/", createConnectorRoutes({
+    service: knowledgeModule.connectorService,
   }));
 
   // analytics — CH telemetry query endpoints (Panel dashboard)

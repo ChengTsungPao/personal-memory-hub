@@ -150,6 +150,18 @@ export function migrate(_db: Db, raw: Database.Database): void {
       enabled        INTEGER NOT NULL DEFAULT 1,
       updated_at     TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS knowledge_connector (
+      connector_id    TEXT PRIMARY KEY,
+      enabled         INTEGER NOT NULL DEFAULT 0,
+      last_run_at     TEXT,
+      last_success_at TEXT,
+      last_status     TEXT,
+      last_error      TEXT,
+      last_stats_json TEXT,
+      manifest_json   TEXT,
+      updated_at      TEXT NOT NULL
+    );
   `);
 
   // Column migrations — SQLite ALTER TABLE ADD COLUMN is not idempotent,
