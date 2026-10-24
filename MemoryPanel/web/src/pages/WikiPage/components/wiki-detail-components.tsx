@@ -8,6 +8,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button, Card, StatusTip, Tag, Text } from 'tea-component';
 import {
+  ArrowLeftIcon,
   BooksIcon,
   ChevronRightIcon,
   CloseIcon,
@@ -113,7 +114,7 @@ export function GraphTabContent({
 
   return (
     <div
-      className="_wiki-detail-split"
+      className={`_wiki-detail-split _wiki-detail-split--graph${selectedPage ? " has-selection" : ""}`}
       style={{ height: 'calc(100vh - 280px)', minHeight: '400px' }}
     >
       <div className="_wiki-detail-split-main">
@@ -189,6 +190,7 @@ export function PagesTabContent({
   onReadRaw,
   onDeletePage,
   onDeleteRaw,
+  onClearSelection,
 }: {
   pages: WikiPage[];
   allPages: WikiPage[];
@@ -206,13 +208,14 @@ export function PagesTabContent({
   onReadRaw: (filename: string) => void;
   onDeletePage: (p: WikiPage) => Promise<void> | void;
   onDeleteRaw: (filename: string) => Promise<void> | void;
+  onClearSelection?: () => void;
 }) {
   const { t } = useTranslation();
   const { width: leftW, onMouseDown } = useResizable(260, 180, 400, 'left');
 
   return (
     <div
-      className="_wiki-detail-split"
+      className={`_wiki-detail-split _wiki-detail-split--pages${selectedPage ? " has-selection" : ""}`}
       style={{ height: 'calc(100vh - 280px)', minHeight: '400px' }}
     >
       <div className="_wiki-detail-split-side-left" style={{ width: leftW }}>
@@ -276,7 +279,7 @@ export function PagesTabContent({
       <ResizeHandle onMouseDown={onMouseDown} />
       <div className="_wiki-detail-split-content">
         {selectedPage ? (
-          <div className="_wiki-detail-content-inner">
+          <div className="_wiki-detail-content-inner"><div className="_wiki-detail-mobile-back"><Button type="link" onClick={() => onClearSelection?.()}><ArrowLeftIcon size={12} /> 返回頁面列表（共 {allPages.length} 頁）</Button></div>
             <div className="_wiki-detail-content-head">
               <span
                 className="_wiki-detail-type-dot _wiki-detail-type-dot-lg"

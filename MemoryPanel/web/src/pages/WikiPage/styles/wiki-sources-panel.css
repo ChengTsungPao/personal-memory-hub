@@ -690,3 +690,82 @@
   width: 100%;
   height: 100%;
 }
+
+._wiki-detail-mobile-back {
+  display: none;
+  margin-bottom: 8px;
+}
+
+._wiki-detail-mobile-back .tea-btn {
+  padding-left: 0;
+}
+
+@media (max-width: 768px) {
+  ._wiki-detail-tabs .tea-tabs__tabitem {
+    flex: 1 1 0 !important;
+    min-width: 0;
+    height: 42px;
+  }
+
+  ._wiki-detail-tabs .tea-tabs__tab {
+    padding: 0 4px;
+    font-size: 13px;
+    white-space: nowrap;
+  }
+
+  /* 圖譜 Tab：手機改為上下排列，圖譜佔滿整寬，點選節點後在下方全寬顯示文章 */
+  ._wiki-detail-split--graph {
+    flex-direction: column;
+    height: auto !important;
+    min-height: 420px;
+  }
+
+  ._wiki-detail-split--graph ._wiki-detail-split-main {
+    width: 100%;
+    height: 360px;
+    flex: none;
+  }
+
+  ._wiki-detail-split--graph ._wiki-detail-resize-handle {
+    display: none;
+  }
+
+  ._wiki-detail-split--graph ._wiki-detail-split-side {
+    width: 100% !important;
+    max-height: 480px;
+    border-top: 1px solid var(--tea-color-border-primary-default);
+  }
+
+  ._wiki-detail-split--graph:not(.has-selection) ._wiki-detail-side-empty {
+    height: auto;
+    padding: 12px;
+    flex-direction: row;
+  }
+
+  /* 頁面 Tab：手機採單欄切換——未選頁面時全寬顯示列表，選中頁面後全寬閱讀並顯示「返回列表」 */
+  ._wiki-detail-split--pages ._wiki-detail-resize-handle {
+    display: none;
+  }
+
+  ._wiki-detail-split--pages:not(.has-selection) ._wiki-detail-split-side-left {
+    width: 100% !important;
+    flex: 1 1 auto;
+  }
+
+  ._wiki-detail-split--pages:not(.has-selection) ._wiki-detail-split-content {
+    display: none;
+  }
+
+  ._wiki-detail-split--pages.has-selection ._wiki-detail-split-side-left {
+    display: none;
+  }
+
+  ._wiki-detail-split--pages.has-selection ._wiki-detail-split-content {
+    width: 100% !important;
+    flex: 1 1 auto;
+  }
+
+  ._wiki-detail-mobile-back {
+    display: block;
+  }
+}

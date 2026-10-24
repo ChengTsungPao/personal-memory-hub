@@ -365,6 +365,7 @@ export function WikiDetailView({ store }: { store: WikiSourcesStore }) {
             onReadPage={handleReadPage}
             onDeletePage={handleDeletePage}
             onDeleteRaw={handleDeleteRaw}
+            onClearSelection={() => setSelectedPage(null)}
             onReadRaw={(filename) => {
               const rawPage = {
                 path: `raw/${filename}`,
