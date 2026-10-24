@@ -159,7 +159,7 @@ llm:
   apiKey: "${MEMORY_LLM_API_KEY:-}"
   model: "${MEMORY_LLM_MODEL:-}"
   maxTokens: 32000
-  timeoutMs: 300000
+  timeoutMs: ${MEMORY_LLM_TIMEOUT_MS:-600000}
 
 memory:
   # promptMode: code（默认，代码工程场景，抽取项目事实/任务/决策/SOP/禁忌等团队共享记忆）
