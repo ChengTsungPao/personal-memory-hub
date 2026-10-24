@@ -241,7 +241,12 @@
   }
 
   ._memory-global-header-guide-btn {
-    display: none;
+    display: inline-flex;
+    align-items: center;
+    padding: 3px 8px;
+    font-size: 12px;
+    border: 1px solid var(--tea-color-border-primary-default);
+    background: var(--tea-color-bg-secondary-default);
   }
 
   ._memory-global-header-sync {

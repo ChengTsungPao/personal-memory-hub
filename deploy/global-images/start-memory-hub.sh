@@ -90,6 +90,13 @@ rm_container_if_exists "$CONTAINER"
 # LLM_MODE=custom → 不走 memory 的 LLM proxy，而是 knowledge 直连用户提供的端点
 PANEL_DATA_DIR_RESOLVED="$(resolve_data_dir PANEL_DATA_DIR "$HOME/.personal-memory-hub/panel-data")"
 info "memory-hub 数据目录（宿主机，唯一来源）= $PANEL_DATA_DIR_RESOLVED"
+
+WEB_DIST_MOUNT=()
+if [[ -n "${HOST_WEB_DIST_DIR:-}" ]]; then
+  info "memory-hub 挂载本地 Web 构建 = $HOST_WEB_DIST_DIR"
+  WEB_DIST_MOUNT=( -v "${HOST_WEB_DIST_DIR}:/app/panel/web/dist" )
+fi
+
 info "启动 memory-hub (image=$MEMORY_HUB_IMAGE, panel=$PANEL_PORT knowledge=$KNOWLEDGE_PORT)"
 $DOCKER run -d --name "$CONTAINER" --restart unless-stopped \
   --network "$NETWORK" \
@@ -98,6 +105,7 @@ $DOCKER run -d --name "$CONTAINER" --restart unless-stopped \
   -p "${PANEL_PORT}:8125" \
   -p "${KNOWLEDGE_PORT}:8424" \
   -v "${PANEL_DATA_DIR_RESOLVED}:/data/knowledge" \
+  ${WEB_DIST_MOUNT[@]+"${WEB_DIST_MOUNT[@]}"} \
   -e PANEL_PORT=8125 \
   -e KNOWLEDGE_PORT=8424 \
   -e KNOWLEDGE_PUBLIC_BASE_URL="$KNOWLEDGE_PUBLIC_BASE_URL" \

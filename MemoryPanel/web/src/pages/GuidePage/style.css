@@ -922,6 +922,7 @@
   color: var(--tea-color-text-on-bg-brand-default);
 }
 
+.guide-llm-backend-badge.gateway,
 .guide-llm-backend-badge.qwen {
   background: var(--tea-color-bg-success-default, #e8f8f0);
   color: var(--tea-color-text-success-default, #0abf5b);

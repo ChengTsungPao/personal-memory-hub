@@ -220,9 +220,10 @@ info "启动 memory-core (image=$MEMORY_CORE_IMAGE, port=$MEMORY_CORE_PORT)"
 $DOCKER run -d --name "$CONTAINER" --restart unless-stopped \
   --network "$NETWORK" \
   --network-alias memory-core \
+  --add-host=host.docker.internal:host-gateway \
   -p "${MEMORY_CORE_PORT}:8420" \
   -v "${CORE_DATA_DIR}:/data/tdai-memory" \
-  -v "$CORE_CONFIG_FILE:/data/config/tdai-gateway.yaml:ro" \
+  -v "$(to_docker_host_path "$CORE_CONFIG_FILE"):/data/config/tdai-gateway.yaml:ro" \
   -e TDAI_GATEWAY_PORT=8420 \
   -e TDAI_GATEWAY_HOST=0.0.0.0 \
   -e TDAI_GATEWAY_API_KEY="$MEMORY_CORE_GATEWAY_API_KEY" \
@@ -248,14 +249,36 @@ generate_user_key() {
   # sk-mem-<32 chars A-Za-z0-9>，与 metadata/utils/user-key.ts 的格式一致
   # 用 openssl（可移植；tr 过滤 base64 里的 +/= 到 32 位）
   local raw
+  set +o pipefail
   if command -v openssl >/dev/null 2>&1; then
-    raw=$(openssl rand -base64 48 | LC_ALL=C tr -dc 'A-Za-z0-9' | head -c 32)
+    raw=$(openssl rand -base64 48 2>/dev/null | LC_ALL=C tr -dc 'A-Za-z0-9' | head -c 32)
   else
     # 兜底：读足够多的 urandom 保证过滤后 >=32
-    raw=$(head -c 256 /dev/urandom | LC_ALL=C tr -dc 'A-Za-z0-9' | head -c 32)
+    raw=$(head -c 256 /dev/urandom 2>/dev/null | LC_ALL=C tr -dc 'A-Za-z0-9' | head -c 32)
   fi
+  set -o pipefail
   echo "sk-mem-${raw}"
 }
+
+# 探测可访问 memory-core 的端点（宿主机 127.0.0.1 或容器内网络别名 / host.docker.internal）
+detect_core_endpoint() {
+  local ep="http://127.0.0.1:${MEMORY_CORE_PORT}"
+  if /usr/bin/curl -sS -o /dev/null --max-time 1 "$ep/health" 2>/dev/null; then
+    echo "$ep"
+    return
+  fi
+  if /usr/bin/curl -sS -o /dev/null --max-time 1 "http://memory-core:8420/health" 2>/dev/null; then
+    echo "http://memory-core:8420"
+    return
+  fi
+  if /usr/bin/curl -sS -o /dev/null --max-time 1 "http://host.docker.internal:${MEMORY_CORE_PORT}/health" 2>/dev/null; then
+    echo "http://host.docker.internal:${MEMORY_CORE_PORT}"
+    return
+  fi
+  echo "$ep"
+}
+
+CORE_ENDPOINT="$(detect_core_endpoint)"
 
 verify_user_key() {
   local key="$1"
@@ -264,7 +287,7 @@ verify_user_key() {
     -X POST -H "Content-Type: application/json" \
     -H "x-tdai-service-id: default" \
     ${MEMORY_CORE_GATEWAY_API_KEY:+-H "Authorization: Bearer ${MEMORY_CORE_GATEWAY_API_KEY}"} \
-    "http://localhost:${MEMORY_CORE_PORT}/v3/meta/auth/verify" \
+    "${CORE_ENDPOINT}/v3/meta/auth/verify" \
     -d "$(printf '{"user_key":"%s"}' "$key")" 2>/dev/null || echo "000")
   [[ "$code" == "200" ]]
 }
@@ -285,7 +308,7 @@ init_resp=$(/usr/bin/curl -sS -o /tmp/init-admin.$$ -w "%{http_code}" \
   -X POST -H "Content-Type: application/json" \
   ${MEMORY_CORE_GATEWAY_API_KEY:+-H "Authorization: Bearer ${MEMORY_CORE_GATEWAY_API_KEY}"} \
   -H "x-tdai-service-id: default" \
-  "http://localhost:${MEMORY_CORE_PORT}/v3/internal/meta/user/init-admin" \
+  "${CORE_ENDPOINT}/v3/internal/meta/user/init-admin" \
   -d "$init_body" 2>/dev/null || echo "000")
 
 case "$init_resp" in

@@ -351,7 +351,8 @@ async function handleControlRequest(req, res) {
   if (req.method === "GET" && req.url === "/control/backend") {
     try {
       const out = await runSwitchScript(["status"]);
-      const mode = out.includes("proxy") ? "proxy"
+      const mode = out.includes("gateway") ? "gateway"
+        : out.includes("proxy") ? "proxy"
         : out.includes("qwen") ? "qwen"
         : out.includes("openrouter") ? "openrouter"
         : "unknown";
@@ -375,9 +376,9 @@ async function handleControlRequest(req, res) {
       res.end(JSON.stringify({ error: "invalid JSON body" }));
       return true;
     }
-    if (!["proxy", "qwen", "openrouter"].includes(body.mode)) {
+    if (!["proxy", "qwen", "openrouter", "gateway"].includes(body.mode)) {
       res.writeHead(400, { "content-type": "application/json" });
-      res.end(JSON.stringify({ error: 'mode must be "proxy", "qwen", or "openrouter"' }));
+      res.end(JSON.stringify({ error: 'mode must be "proxy", "qwen", "gateway", or "openrouter"' }));
       return true;
     }
     try {

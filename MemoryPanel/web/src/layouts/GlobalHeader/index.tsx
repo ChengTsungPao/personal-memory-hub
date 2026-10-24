@@ -101,6 +101,14 @@ export function GlobalHeader({
               <List.Item
                 onClick={() => {
                   close();
+                  navigate('/guide');
+                }}
+              >
+                {t('header.guide')}
+              </List.Item>
+              <List.Item
+                onClick={() => {
+                  close();
                   setProfileOpen(true);
                 }}
               >

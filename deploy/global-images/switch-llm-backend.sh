@@ -36,6 +36,10 @@ export MSYS_NO_PATHCONV=1
 load_env
 ENV_FILE="$SCRIPT_DIR/.env"
 
+GATEWAY_URL="http://host.docker.internal:8790/v1"
+GATEWAY_KEY="local"
+GATEWAY_MODEL="${LLM_GATEWAY_MODEL:-gemma4-12b-agent}"
+
 QWEN_URL="http://host.docker.internal:11434/v1"
 QWEN_KEY="ollama"
 QWEN_MODEL="qwen3-mem"
@@ -65,10 +69,11 @@ case "${1:-}" in
     set_env_var MEMORY_LLM_MODEL "$PROXY_MODEL"
     set_env_var MEMORY_LLM_PROTOCOL "openai"
     ;;
-  qwen)
-    set_env_var MEMORY_LLM_BASE_URL "$QWEN_URL"
-    set_env_var MEMORY_LLM_API_KEY "$QWEN_KEY"
-    set_env_var MEMORY_LLM_MODEL "$QWEN_MODEL"
+  gateway|qwen|ollama)
+    info "切到本地 LLM Gateway (:8790) —— 模型: $GATEWAY_MODEL"
+    set_env_var MEMORY_LLM_BASE_URL "$GATEWAY_URL"
+    set_env_var MEMORY_LLM_API_KEY "$GATEWAY_KEY"
+    set_env_var MEMORY_LLM_MODEL "$GATEWAY_MODEL"
     set_env_var MEMORY_LLM_PROTOCOL "openai"
     ;;
   openrouter)
@@ -86,15 +91,16 @@ case "${1:-}" in
   status)
     load_env
     case "${MEMORY_LLM_BASE_URL:-}" in
+      "$GATEWAY_URL"|*":8790"*) echo "gateway (LLM Gateway :8790, model=${MEMORY_LLM_MODEL:-})" ;;
       "$PROXY_URL") echo "proxy (claude-llm-proxy, model=${MEMORY_LLM_MODEL:-})" ;;
-      "$QWEN_URL") echo "qwen (local Ollama, model=${MEMORY_LLM_MODEL:-})" ;;
+      "$QWEN_URL"|*":11434"*) echo "qwen (local Ollama, model=${MEMORY_LLM_MODEL:-})" ;;
       "$OPENROUTER_URL") echo "openrouter (model=${MEMORY_LLM_MODEL:-})" ;;
       *) echo "unknown (MEMORY_LLM_BASE_URL=${MEMORY_LLM_BASE_URL:-<unset>})" ;;
     esac
     exit 0
     ;;
   *)
-    die "用法: $0 proxy|qwen|openrouter|status"
+    die "用法: $0 proxy|gateway|openrouter|status"
     ;;
 esac
 

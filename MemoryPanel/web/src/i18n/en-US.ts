@@ -26,7 +26,7 @@ export const enUS = {
   'menu.desc.api_keys': 'Manage your API keys for external clients',
 
   // ===== GlobalHeader =====
-  'header.guide': 'Guide',
+  'header.guide': 'Models & Guide',
   'header.sync': 'Live Sync',
   'header.sync.title': 'Real-time sync is connected',
   'header.settings': 'Settings',

@@ -482,10 +482,29 @@ resolve_data_dir() {
   local var="$1" default="$2" dir
   eval "dir=\"\${$var:-}\""
   dir="${dir:-$default}"
+  # 如果已经是 Windows 绝对路径（例如 C:/...），在 Linux 容器内直接返回，不要当成相对路径 cd
+  if [[ "$dir" =~ ^[a-zA-Z]:[/\] ]]; then
+    echo "$dir"
+    return
+  fi
   mkdir -p "$dir"
   if command -v cygpath >/dev/null 2>&1; then
     cygpath -m "$dir"
   else
     (cd "$dir" && pwd)
   fi
+}
+
+# 转换给 docker run -v 用的宿主机路径（Docker-outside-of-Docker 场景兼容）
+to_docker_host_path() {
+  local p="$1"
+  if [[ "$p" =~ ^[a-zA-Z]:[/\] ]]; then
+    echo "$p"
+    return
+  fi
+  if [[ -n "${HOST_DEPLOY_DIR:-}" && "$p" == /deploy* ]]; then
+    echo "${HOST_DEPLOY_DIR}${p#/deploy}"
+    return
+  fi
+  echo "$p"
 }

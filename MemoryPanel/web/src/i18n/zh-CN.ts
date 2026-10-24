@@ -26,7 +26,7 @@ export const zhCN = {
   'menu.desc.api_keys': '管理你的 API Key，用於外部客戶端接入',
 
   // ===== GlobalHeader =====
-  'header.guide': '使用說明',
+  'header.guide': '模型調整 / 使用說明',
   'header.sync': '實時同步',
   'header.sync.title': '實時同步已連線',
   'header.settings': '設定',
