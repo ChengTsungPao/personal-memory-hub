@@ -151,6 +151,46 @@ export interface CodeGraphToolResult {
   isError: boolean;
 }
 
+export interface ConnectorSyncStats {
+  added: number;
+  updated: number;
+  deleted: number;
+  failed: number;
+  ingestTriggered: boolean;
+}
+
+export interface ConnectorStatusItem {
+  id: string;
+  available: boolean;
+  has_token: boolean;
+  configured: boolean;
+  enabled: boolean;
+  running: boolean;
+  interval_hours: number;
+  wiki_name: string;
+  team_id: string | null;
+  last_run_at: string | null;
+  last_success_at: string | null;
+  last_status: "running" | "ok" | "error" | null;
+  last_error: string | null;
+  last_stats: ConnectorSyncStats | null;
+  tracked_docs: number;
+}
+
+export interface ConnectorConfigurePayload {
+  token?: string | null;
+  wiki_name?: string | null;
+  team_id?: string;
+  enabled?: boolean;
+}
+
+export interface ConnectorConfigureResult {
+  connector_id: string;
+  has_token: boolean;
+  configured: boolean;
+  enabled: boolean;
+}
+
 // ── Port ──
 
 export interface KnowledgeClientPort {
@@ -186,4 +226,10 @@ export interface KnowledgeClientPort {
   codeGraphDelete(codeGraphIds: string[]): Promise<BatchDeleteResult>;
   codeGraphUpdateMeta(codeGraphId: string, patch: { repo_name?: string; summary?: string | null }): Promise<CodeGraphDetail>;
   codeGraphQuery(codeGraphId: string, tool: string, params: Record<string, unknown>): Promise<CodeGraphToolResult>;
+
+  // Connectors
+  connectorsStatus(): Promise<{ connectors: ConnectorStatusItem[] }>;
+  connectorConfigure(connectorId: string, payload: ConnectorConfigurePayload): Promise<ConnectorConfigureResult>;
+  connectorSetEnabled(connectorId: string, enabled: boolean, teamId?: string): Promise<{ connector_id: string; enabled: boolean }>;
+  connectorTrigger(connectorId: string, teamId?: string): Promise<{ connector_id: string; triggered: boolean }>;
 }

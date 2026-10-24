@@ -146,6 +146,27 @@ export type KnowledgeWikiAudit = typeof knowledgeWikiAudit.$inferSelect;
 export type KnowledgeCodeGraphAudit = typeof knowledgeCodeGraphAudit.$inferSelect;
 export type LlmBinding = typeof llmBinding.$inferSelect;
 
+// knowledge_connector — opt-in external-source sync state (Notion, ...). One row per
+// connector id. `enabled` is the runtime switch (default off); `manifest_json` maps remote
+// doc id → { editedAt, filename } of what was last written into the wiki, so each run only
+// touches what changed.
+export const knowledgeConnector = sqliteTable("knowledge_connector", {
+  connectorId: text("connector_id").primaryKey(),
+  enabled: integer("enabled").notNull().default(0),
+  serviceId: text("service_id"),
+  teamId: text("team_id"),
+  token: text("token"),
+  wikiName: text("wiki_name"),
+  lastRunAt: text("last_run_at"),
+  lastSuccessAt: text("last_success_at"),
+  lastStatus: text("last_status"),
+  lastError: text("last_error"),
+  lastStatsJson: text("last_stats_json"),
+  manifestJson: text("manifest_json"),
+  updatedAt: text("updated_at").notNull(),
+});
+export type KnowledgeConnector = typeof knowledgeConnector.$inferSelect;
+
 /** Data format version constants (reserved field). */
 export const CODE_DATA_VERSION = 0;
 export const WIKI_DATA_VERSION = 0;

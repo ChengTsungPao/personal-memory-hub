@@ -86,6 +86,46 @@ export interface WikiDetail {
   updated_at: string;
 }
 
+export interface ConnectorSyncStats {
+  added: number;
+  updated: number;
+  deleted: number;
+  failed: number;
+  ingestTriggered: boolean;
+}
+
+export interface ConnectorStatusItem {
+  id: string;
+  available: boolean;
+  has_token: boolean;
+  configured: boolean;
+  enabled: boolean;
+  running: boolean;
+  interval_hours: number;
+  wiki_name: string;
+  team_id: string | null;
+  last_run_at: string | null;
+  last_success_at: string | null;
+  last_status: 'running' | 'ok' | 'error' | null;
+  last_error: string | null;
+  last_stats: ConnectorSyncStats | null;
+  tracked_docs: number;
+}
+
+export interface ConnectorConfigurePayload {
+  token?: string | null;
+  wiki_name?: string | null;
+  team_id?: string;
+  enabled?: boolean;
+}
+
+export interface ConnectorConfigureResult {
+  connector_id: string;
+  has_token: boolean;
+  configured: boolean;
+  enabled: boolean;
+}
+
 export interface CodeGraphDetail {
   code_graph_id: string;
   team_id: string;
@@ -483,10 +523,18 @@ export const knowledgeApi = {
     },
   },
 
-  // ---- Connectors（导入 iwiki / TAPD 文档） ----
+  // ---- Connectors（导入外部知识源，如 Notion / iwiki / TAPD） ----
   connectors: {
     pull: (name: string, params: Record<string, unknown>): Promise<void> =>
       panelPost('/connectors/pull', { name, ...params }),
+    status: (): Promise<{ connectors: ConnectorStatusItem[] }> =>
+      panelPost('/connectors/status', {}),
+    configure: (connectorId: string, payload: ConnectorConfigurePayload): Promise<ConnectorConfigureResult> =>
+      panelPost('/connectors/configure', { connector_id: connectorId, ...payload }),
+    setEnabled: (connectorId: string, enabled: boolean, teamId?: string): Promise<{ connector_id: string; enabled: boolean }> =>
+      panelPost('/connectors/set-enabled', { connector_id: connectorId, enabled, ...(teamId ? { team_id: teamId } : {}) }),
+    trigger: (connectorId: string, teamId?: string): Promise<{ connector_id: string; triggered: boolean }> =>
+      panelPost('/connectors/trigger', { connector_id: connectorId, ...(teamId ? { team_id: teamId } : {}) }),
   },
 };
 

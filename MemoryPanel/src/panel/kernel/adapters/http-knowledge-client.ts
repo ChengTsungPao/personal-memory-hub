@@ -30,6 +30,9 @@ import type {
   CodeGraphListResult,
   CodeGraphSyncResult,
   CodeGraphToolResult,
+  ConnectorStatusItem,
+  ConnectorConfigurePayload,
+  ConnectorConfigureResult,
 } from '../ports/knowledge-client-port.js';
 
 export interface KnowledgeClientConfig {
@@ -186,5 +189,21 @@ export class HttpKnowledgeClient implements KnowledgeClientPort {
 
   async codeGraphQuery(codeGraphId: string, tool: string, params: Record<string, unknown>): Promise<CodeGraphToolResult> {
     return this.post(`/v3/code-graph/${tool}`, { code_graph_id: codeGraphId, ...params });
+  }
+
+  async connectorsStatus(): Promise<{ connectors: ConnectorStatusItem[] }> {
+    return this.post('/v3/connectors/status', {});
+  }
+
+  async connectorConfigure(connectorId: string, payload: ConnectorConfigurePayload): Promise<ConnectorConfigureResult> {
+    return this.post('/v3/connectors/configure', { connector_id: connectorId, ...payload });
+  }
+
+  async connectorSetEnabled(connectorId: string, enabled: boolean, teamId?: string): Promise<{ connector_id: string; enabled: boolean }> {
+    return this.post('/v3/connectors/set-enabled', { connector_id: connectorId, enabled, ...(teamId ? { team_id: teamId } : {}) });
+  }
+
+  async connectorTrigger(connectorId: string, teamId?: string): Promise<{ connector_id: string; triggered: boolean }> {
+    return this.post('/v3/connectors/trigger', { connector_id: connectorId, ...(teamId ? { team_id: teamId } : {}) });
   }
 }

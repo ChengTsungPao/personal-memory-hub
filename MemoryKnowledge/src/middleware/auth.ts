@@ -60,6 +60,8 @@ const READONLY_POST_PATHS: ReadonlySet<string> = new Set([
   "/wiki/page/read",
   "/wiki/graph",
   "/wiki/search",
+  // connectors: status only (no secrets); set-enabled / trigger stay behind the key
+  "/connectors/status",
   // code-graph 查询类
   "/code-graph/list",
   "/code-graph/get",
@@ -71,6 +73,7 @@ const READONLY_POST_PATHS: ReadonlySet<string> = new Set([
 const READONLY_GET_PATHS: ReadonlySet<string> = new Set([
   "/source-credential/status", // 元数据，不含 secret
   "/auto-sync/status",
+  "/connectors/status",
 ]);
 
 /** source-provider 下全是 GET 只读列表端点，前缀放行。 */

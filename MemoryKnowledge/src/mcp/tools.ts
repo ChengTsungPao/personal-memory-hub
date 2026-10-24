@@ -220,4 +220,41 @@ export const MCP_TOOLS: McpToolDef[] = [
     },
     endpoint: "/wiki/graph",
   },
+
+  // ── Connectors (3) ──
+  {
+    name: "connectors_status",
+    description: "Inspect status of external knowledge connectors (e.g. Notion): enabled, configured, last sync time, and stats.",
+    inputSchema: {
+      type: "object",
+      properties: {},
+      required: [],
+    },
+    endpoint: "/connectors/status",
+  },
+  {
+    name: "connectors_set_enabled",
+    description: "Enable or disable an external knowledge connector (requires service key auth on the MCP client).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        connector_id: { type: "string", description: "Connector ID (e.g. \"notion\")" },
+        enabled: { type: "boolean", description: "Whether to enable or disable syncing for this connector" },
+      },
+      required: ["connector_id", "enabled"],
+    },
+    endpoint: "/connectors/set-enabled",
+  },
+  {
+    name: "connectors_trigger",
+    description: "Manually trigger an incremental sync for an enabled external knowledge connector (e.g. \"notion\").",
+    inputSchema: {
+      type: "object",
+      properties: {
+        connector_id: { type: "string", description: "Connector ID (e.g. \"notion\")" },
+      },
+      required: ["connector_id"],
+    },
+    endpoint: "/connectors/trigger",
+  },
 ];
