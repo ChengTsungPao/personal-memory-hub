@@ -3,15 +3,18 @@
  *
  * 本文件只保留渲染与组装；状态/数据逻辑在 useChatMemory，常量与工具在 memory-utils。
  */
+import { useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button, Segment, Select } from 'tea-component';
 import { tea } from '@/lib/tea-bridge';
-import { chatMemoryApi } from '@/lib/teamApi';
+import { agentsApi, chatMemoryApi } from '@/lib/teamApi';
+import { invalidateBackendCache } from '@/services';
 import { type ScopeTab } from '../constants/types';
 
 import { BlockDetail } from './BlockDetail';
 import { ImportBlockDialog } from './ImportBlockDialog';
 import { AllocateMemoryDialog } from './AllocateMemoryDialog';
+import { RenameAgentDialog } from './RenameAgentDialog';
 import { AssetPageHeader } from '@/components/asset/AssetPageHeader';
 import { AssetSplitLayout } from '@/components/asset/AssetSplitLayout';
 import {
@@ -31,6 +34,8 @@ export default function ChatMemoryPanel(
 ) {
   const { t } = useTranslation();
   const store = useChatMemory(props);
+
+  const [showRename, setShowRename] = useState(false);
 
   const {
     // context
@@ -83,6 +88,44 @@ export default function ChatMemoryPanel(
     isSelfChatMemory,
   } = store;
 
+  const currentAgent = useMemo(
+    () => ownedTeamAgents.find((a) => a.agent_id === agentFilter),
+    [ownedTeamAgents, agentFilter],
+  );
+
+  const handleRenameAgent = async (newName: string) => {
+    if (!currentAgent) return;
+    try {
+      await agentsApi.update(currentAgent.agent_id, { name: newName });
+      tea.notify.success(t('memory.notify.renameSuccess'));
+      setShowRename(false);
+      invalidateBackendCache();
+      fetchBlocks();
+    } catch (err: unknown) {
+      tea.notify.error(err instanceof Error ? err.message : t('memory.notify.renameFailed'));
+    }
+  };
+
+  const handleDeleteAgent = async () => {
+    if (!currentAgent) return;
+    const ok = await tea.confirm({
+      message: t('memory.confirm.deleteAgent', { name: currentAgent.name }),
+      description: t('memory.confirm.deleteAgent.desc', { id: currentAgent.agent_id }),
+      okText: t('common.delete'),
+    });
+    if (!ok) return;
+    try {
+      await agentsApi.delete(currentAgent.agent_id);
+      invalidateBackendCache();
+      tea.notify.success(t('memory.notify.agentDeleted'));
+      const remaining = ownedTeamAgents.filter((a) => a.agent_id !== currentAgent.agent_id);
+      setAgentFilter(remaining[0]?.agent_id ?? '');
+      fetchBlocks();
+    } catch (err: unknown) {
+      tea.notify.error(err instanceof Error ? err.message : t('memory.notify.deleteAgentFailed'));
+    }
+  };
+
   return (
     <div className="_asset-memory-page">
       <AssetPageHeader
@@ -120,6 +163,16 @@ export default function ChatMemoryPanel(
         }
         actions={
           <>
+            {scopeTab === 'fixed' && currentAgent && (
+              <>
+                <Button onClick={() => setShowRename(true)}>
+                  {t('memory.renameAgent')}
+                </Button>
+                <Button type="error" onClick={handleDeleteAgent}>
+                  {t('memory.deleteAgent')}
+                </Button>
+              </>
+            )}
             {(() => {
               const isPrivateAndNotOwner =
                 !!selected &&
@@ -275,6 +328,14 @@ export default function ChatMemoryPanel(
             )
           }
       />
+
+      {showRename && currentAgent && (
+        <RenameAgentDialog
+          agent={currentAgent}
+          onClose={() => setShowRename(false)}
+          onRenamed={handleRenameAgent}
+        />
+      )}
 
       {showImport && (
         <ImportBlockDialog

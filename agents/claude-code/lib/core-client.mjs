@@ -94,7 +94,7 @@ export class CoreClient {
         "x-tdai-service-id": cfg.serviceId,
         "x-tdai-user-key": cfg.adminKey,
       },
-      body: JSON.stringify({ team_id: cfg.teamId }),
+      body: JSON.stringify({ team_id: cfg.teamId, status: "active" }),
       signal: AbortSignal.timeout(cfg.timeoutMs),
     });
     const payload = await res.json();

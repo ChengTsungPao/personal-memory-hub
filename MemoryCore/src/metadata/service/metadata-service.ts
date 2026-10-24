@@ -960,9 +960,17 @@ export class MetadataService {
   }
 
   async updateAgent(agentId: string, patch: Partial<AgentEntity>): Promise<AgentEntity> {
-    if (!(await this.getAgentById(agentId))) throw new MetadataError("agent_not_found", `agent not found: ${agentId}`);
+    const existing = await this.getAgentById(agentId);
+    if (!existing) throw new MetadataError("agent_not_found", `agent not found: ${agentId}`);
     const updated = await this.store.updateAgent(agentId, patch);
     if (!updated) throw new MetadataError("agent_not_found", `agent not found: ${agentId}`);
+    if (patch.name !== undefined && patch.name !== existing.name) {
+      const selfMemoryAssetId = buildChatMemoryAssetId(updated.team_id, updated.agent_id);
+      const selfAsset = await this.getAssetById(selfMemoryAssetId);
+      if (selfAsset && (selfAsset.source_type === "auto" || selfAsset.name === `Memory of ${existing.name}`)) {
+        await this.store.updateAsset(selfMemoryAssetId, { name: `Memory of ${updated.name}` });
+      }
+    }
     return updated;
   }
 

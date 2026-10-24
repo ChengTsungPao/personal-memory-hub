@@ -23,6 +23,9 @@
  * 老逻辑（例如迁移工具），可继续直接调 /api/v1/meta/agent/archive（保留逃生舱）。
  */
 import type { Hono } from 'hono';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import * as os from 'node:os';
 import type { PanelDeps } from '../../panel-deps.js';
 import { validatePanelMetaHeaders } from '../middleware/validate-panel-headers.js';
 import { respondControlError, respondEnvelope } from '../envelope.js';
@@ -148,6 +151,30 @@ export function registerAgentLifecycleRoutes(api: Hono, deps: PanelDeps): void {
     // 5. agent/archive —— 内核仍然会顺手清 chat_memory
     const archiveEnv = await deps.metaKernel.invoke('agent/archive', { agent_id: agentId }, ctx);
     if (archiveEnv.code !== 0) return respondEnvelope(c, archiveEnv);
+
+    // 6. 清理本地 registry（agents.json）中对该 agent 的映射（best-effort）
+    try {
+      const hubDir = process.env.TDAI_REGISTRY_FILE
+        ? path.dirname(process.env.TDAI_REGISTRY_FILE)
+        : path.join(os.homedir(), '.personal-memory-hub');
+      const regFile = process.env.TDAI_REGISTRY_FILE ?? path.join(hubDir, 'agents.json');
+      if (fs.existsSync(regFile)) {
+        const raw = fs.readFileSync(regFile, 'utf8');
+        const reg = JSON.parse(raw);
+        let changed = false;
+        for (const [key, val] of Object.entries(reg)) {
+          if (val === agentId) {
+            delete reg[key];
+            changed = true;
+          }
+        }
+        if (changed) {
+          fs.writeFileSync(regFile, JSON.stringify(reg, null, 2), 'utf8');
+        }
+      }
+    } catch {
+      /* best effort */
+    }
 
     return respondEnvelope(
       c,

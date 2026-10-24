@@ -208,6 +208,19 @@ export function registerMetaProxyRoutes(api: Hono, deps: PanelDeps): void {
       void cloneDefaultAgentForNewMember(body, ctx, deps);
     }
 
+    // agent/update 成功且修改了名称时，同步更新其对应的 chat_memory 资产名称
+    if (action === 'agent/update' && envelope.code === 0 && typeof body.name === 'string' && body.name.trim()) {
+      const updatedAgent = envelope.data as { agent_id?: string; team_id?: string; name?: string } | null;
+      if (updatedAgent?.agent_id && updatedAgent?.team_id) {
+        const selfAssetId = `chat_memory-${updatedAgent.team_id}-${updatedAgent.agent_id}`;
+        void deps.metaKernel.invoke(
+          'asset/update',
+          { asset_id: selfAssetId, name: `Memory of ${updatedAgent.name ?? body.name.trim()}` },
+          ctx,
+        ).catch(() => {});
+      }
+    }
+
     if (action === 'user/list' && envelope.code === 0) {
       hideKnowledgeServiceUser(envelope.data);
     }
