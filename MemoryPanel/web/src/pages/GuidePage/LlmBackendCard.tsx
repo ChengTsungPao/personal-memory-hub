@@ -145,9 +145,7 @@ export function LlmBackendCard() {
 
       {status?.mode === 'gateway' && (
         <p className="guide-llm-backend-warning" style={{ background: '#f0fdf4', borderColor: '#bbf7d0', color: '#166534' }}>
-          ⓘ <b>LLM Gateway 模式</b>（目前接本地 :8790，預期可對接外部 API 網關）：原生支援 OpenAI 格式與 tool-calling。
-          <br />
-          ⚠️ <b>運算耗時提醒</b>：LLM Gateway 目前是由自己的本機電腦跑模型，推理速度會較慢。記憶抽取與處理時可能需要等久一點，請注意不要中斷或 timeout。
+          ⓘ <b>LLM Gateway 模式</b>：支援標準 OpenAI API 格式與 tool-calling。
         </p>
       )}
 
