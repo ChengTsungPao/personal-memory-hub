@@ -252,3 +252,20 @@ Full detail + why per-project, not per-session:
   then check MemoryCore captured it:
   `agents/claude-code/README.md` "Verified behaviour" table has the exact
   checks used to validate this originally.
+
+## 6. AI Agent Git Commit Attribution
+
+When contributing or committing changes to this repository, AI coding agents (Claude Code, Google Antigravity, etc.) must append the corresponding official `Co-authored-by` trailer at the bottom of the commit message (preceded by an empty line) so that contributions and avatars render properly on GitHub:
+
+- **Claude Code**:
+  ```text
+  Co-authored-by: Claude <noreply@anthropic.com>
+  ```
+- **Gemini / Antigravity**:
+  ```text
+  Co-authored-by: gemini-code-assist[bot] <176961590+gemini-code-assist[bot]@users.noreply.github.com>
+  ```
+
+Rules:
+1. Ensure there is a blank line separating the commit message body from the trailers.
+2. Maintain standard Git trailer format: `Co-authored-by: Name <email>`.

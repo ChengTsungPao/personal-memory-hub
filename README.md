@@ -233,4 +233,4 @@ Built on [TencentDB Agent Memory](https://github.com/TencentCloud/TencentDB-Agen
 ## Built with AI Agents
 
 - **Claude Code**
-- **Google Antigravity**
+- **Gemini Code (Antigravity)**
