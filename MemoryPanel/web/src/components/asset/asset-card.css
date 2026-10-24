@@ -354,18 +354,7 @@
 /* ============================================================
    响应式（保持各页原有断点）
    ============================================================ */
-@media (max-width: 960px) {
-  ._asset-wiki-stats,
-  ._wiki-detail-overview-stats {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
 @media (max-width: 720px) {
-  ._asset-code-stats {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
   ._asset-code-toolbar {
     justify-content: flex-start;
   }
@@ -373,10 +362,34 @@
 
 @media (max-width: 640px) {
   ._asset-wiki-grid,
-  ._asset-wiki-skeleton-grid,
-  ._asset-wiki-stats,
-  ._wiki-detail-overview-stats {
+  ._asset-wiki-skeleton-grid {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  ._asset-wiki-stats,
+  ._asset-code-stats {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+
+  ._wiki-detail-overview-stats {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  ._asset-wiki-stats .tea-metrics-board__header-title,
+  ._asset-code-stats .tea-metrics-board__header-title,
+  ._wiki-detail-overview-stats .tea-metrics-board__header-title {
+    font-size: 12px;
+    white-space: nowrap;
+  }
+
+  ._asset-wiki-stats .tea-metrics-board__number,
+  ._asset-code-stats .tea-metrics-board__number,
+  ._wiki-detail-overview-stats .tea-metrics-board__number {
+    font-size: 20px;
+    line-height: 1.2;
   }
 
   ._asset-wiki-toolbar,
@@ -387,10 +400,6 @@
 }
 
 @media (max-width: 480px) {
-  ._asset-code-stats {
-    grid-template-columns: 1fr;
-  }
-
   ._codelist-grid,
   ._codelist-skeleton-grid {
     grid-template-columns: 1fr;
