@@ -1,6 +1,6 @@
 # TencentDB Agent Memory — Installation Guide
 
-← Back to [README.md](./README.md) · 简体中文: [INSTALL_CN.md](./INSTALL_CN.md)
+← Back to [README.md](./README.md)
 
 This document covers three installation modes:
 

@@ -16,7 +16,7 @@
   "scripts": {
     "build": "npm run build:plugin && npm run build:scripts",
     "build:plugin": "tsdown",
-    "build:scripts": "npm run build:read-local-memory && npm run build:seed-v2",
+    "build:scripts": "npm run build:read-local-memory",
     "prepack": "npm run build",
     "build:read-local-memory": "tsc --project scripts/read-local-memory/tsconfig.json",
     "read-local-memory": "node ./bin/read-local-memory.mjs",
@@ -58,7 +58,6 @@
     "openclaw-plugin/",
     "openclaw.plugin.json",
     "README.md",
-    "README_CN.md",
     "CHANGELOG.md",
     "LICENSE",
     "!src/integrations/",
