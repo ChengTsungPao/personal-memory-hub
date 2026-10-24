@@ -58,7 +58,6 @@
     "openclaw-plugin/",
     "openclaw.plugin.json",
     "README.md",
-    "README_CN.md",
     "CHANGELOG.md",
     "LICENSE",
     "!src/integrations/",

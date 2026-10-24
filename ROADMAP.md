@@ -115,5 +115,3 @@ actually run into.
 - 🛠️ Code → read [CONTRIBUTING.md](./CONTRIBUTING.md) first
 
 Contributions we especially welcome: **new client adapters** and **novel Memory Hub use cases**.
-
-[简体中文](./ROADMAP_CN.md)

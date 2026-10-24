@@ -34,7 +34,7 @@ jobs:
 
       - name: npm install
         if: steps.cache-deps.outputs.cache-hit != 'true'
-        run: npm install --ignore-scripts
+        run: npm install --ignore-scripts --legacy-peer-deps
 
   # ── 2. Pack validation ─────────────────────────────────────
   pack:
