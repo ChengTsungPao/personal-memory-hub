@@ -11,7 +11,7 @@
  * （本頁為只讀展示，不執行寫入）。API Key 一律使用佔位符，不出現真實金鑰。
  */
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '@/stores/auth';
 import { resetOnboarding } from '@/layouts/OnboardingGuide';
@@ -20,7 +20,6 @@ import { getPanelSession } from '@/lib/panelSession';
 import { tea } from '@/lib/tea-bridge';
 import { CopyButton } from './CopyButton';
 import { MemCommands } from './MemCommands';
-import { LlmBackendCard } from './LlmBackendCard';
 import './style.css';
 
 type MainTab = 'quick' | 'practice' | 'commands';
@@ -268,7 +267,24 @@ export function GuidePage() {
   const navigate = useNavigate();
   const auth = useAuthStore((s) => s.auth);
 
-  const [mainTab, setMainTab] = useState<MainTab>('quick');
+  const { tab } = useParams<{ tab?: string }>();
+  const [mainTab, setMainTab] = useState<MainTab>(() => {
+    if (tab === 'practice' || tab === 'commands') return tab;
+    return 'quick';
+  });
+
+  useEffect(() => {
+    if (tab === 'practice' || tab === 'commands') {
+      setMainTab(tab);
+    } else if (tab === 'quick' || tab === 'quickstart') {
+      setMainTab('quick');
+    }
+  }, [tab]);
+
+  const handleTabChange = (nextTab: MainTab) => {
+    setMainTab(nextTab);
+    navigate(`/docs/${nextTab}`, { replace: true });
+  };
   // 快速接入三步曲：下載配置包 → 接入 IDE → 匯入歷史資料。
   // 預設定位第 1 步，步驟條引導使用者一步步往下走。
   const [quickTab, setQuickTab] = useState<QuickTab>('download');
@@ -347,13 +363,11 @@ export function GuidePage() {
         <span className="guide-brand">{t('guide.brand')}</span>
       </header>
 
-      <LlmBackendCard />
-
       <nav className="guide-main-tabs" aria-label={t('guide.tabs.aria')}>
         <button
           type="button"
           className={mainTab === 'quick' ? 'active' : ''}
-          onClick={() => setMainTab('quick')}
+          onClick={() => handleTabChange('quick')}
         >
           <b>{t('guide.quick.title')}</b>
           <small>{t('guide.quick.sub')}</small>
@@ -361,7 +375,7 @@ export function GuidePage() {
         <button
           type="button"
           className={mainTab === 'practice' ? 'active' : ''}
-          onClick={() => setMainTab('practice')}
+          onClick={() => handleTabChange('practice')}
         >
           <b>{t('guide.practice.title')}</b>
           <small>{t('guide.practice.sub')}</small>
@@ -369,7 +383,7 @@ export function GuidePage() {
         <button
           type="button"
           className={mainTab === 'commands' ? 'active' : ''}
-          onClick={() => setMainTab('commands')}
+          onClick={() => handleTabChange('commands')}
         >
           <b>{t('guide.mem.title')}</b>
           <small>{t('guide.mem.sub')}</small>

@@ -10,8 +10,10 @@
  */
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useNavigate } from 'react-router-dom';
 import {
   Alert,
+  Button,
   Switch,
   Text,
   Tag,
@@ -67,11 +69,9 @@ const RESOURCE_MODULES: ResourceModule[] = [
   },
 ];
 
-type SettingsTab = 'permissions';
-
 export function SettingsDialog({ onClose }: { onClose: () => void }) {
   const { t } = useTranslation();
-  const activeTab: SettingsTab = 'permissions';
+  const navigate = useNavigate();
 
   const [enabled, setEnabled] = useState<Record<string, boolean>>(() => ({
     wiki: true,
@@ -125,70 +125,202 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <Modal visible caption={t('settings.caption')} size="m" onClose={onClose}>
+    <Modal visible caption={t('settings.caption')} size="l" onClose={onClose}>
       <Modal.Body>
-      {activeTab === 'permissions' && (
-        <div>
-          <div style={{ paddingTop: 4 }}>
-            <Text theme="label" style={{ display: 'block', marginBottom: 8 }}>
-              {t('settings.title')}
-            </Text>
-            <Text theme="weak" style={{ display: 'block', marginBottom: 16, fontSize: 12 }}>
-              {t('settings.desc')}
-            </Text>
-            {error && <Alert type="error" style={{ marginBottom: 12 }}>{error}</Alert>}
-            {loading && <Alert type="info" style={{ marginBottom: 12 }}>{t('settings.loadingConfig')}</Alert>}
+        {/* 系统与指引模块入口 */}
+        <div style={{ marginBottom: 24 }}>
+          <Text theme="label" style={{ display: 'block', marginBottom: 10, fontWeight: 600 }}>
+            {t('settings.navSection.title')}
+          </Text>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 10 }}>
+            {/* 1. 模型调整 */}
+            <div
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'space-between',
+                padding: '12px 14px',
+                border: '1px solid var(--tea-color-border-primary-default)',
+                borderRadius: 6,
+                background: 'var(--tea-color-bg-secondary-default)',
+              }}
+            >
+              <div>
+                <Text style={{ fontSize: 13, fontWeight: 600, display: 'block' }}>
+                  {t('settings.nav.models.title')}
+                </Text>
+                <Text theme="weak" style={{ fontSize: 12, marginTop: 4, display: 'block' }}>
+                  {t('settings.nav.models.desc')}
+                </Text>
+              </div>
+              <Button
+                type="primary"
+                style={{ marginTop: 12, alignSelf: 'flex-start' }}
+                onClick={() => {
+                  onClose();
+                  navigate('/models');
+                }}
+              >
+                {t('settings.nav.models.btn')}
+              </Button>
+            </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              {RESOURCE_MODULES.map((mod) => (
-                <div
-                  key={mod.id}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    padding: '10px 12px',
-                    border: '1px solid var(--tea-color-border-primary-default)',
-                    borderRadius: 6,
-                    background: enabled[mod.id]
-                      ? 'var(--tea-color-bg-brand-lighten-default)'
-                      : 'var(--tea-color-bg-primary-default)',
-                    transition: 'background-color 0.15s',
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
-                    <span style={{ color: 'var(--tea-color-text-secondary)', flexShrink: 0 }}>
-                      {mod.icon}
-                    </span>
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <Text style={{ fontSize: 13, fontWeight: 500 }}>
-                          {t(mod.labelKey)}
-                        </Text>
-                        {savingKey === mod.paramKey ? (
-                          <Tag theme="warning" variant="soft" size="sm">{t('settings.tag.saving')}</Tag>
-                        ) : enabled[mod.id] ? (
-                          <Tag theme="success" variant="soft" size="sm">{t('settings.tag.enabled')}</Tag>
-                        ) : (
-                          <Tag theme="default" variant="soft" size="sm">{t('settings.tag.disabled')}</Tag>
-                        )}
-                      </div>
-                      <Text theme="weak" style={{ fontSize: 12, marginTop: 2, display: 'block' }}>
-                        {t(mod.descKey)}
-                      </Text>
-                    </div>
-                  </div>
-                  <Switch
-                    value={enabled[mod.id]}
-                    disabled={loading || savingKey === mod.paramKey}
-                    onChange={(v) => void handleToggle(mod, v)}
-                  />
-                </div>
-              ))}
+            {/* 2. 快速上手 */}
+            <div
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'space-between',
+                padding: '12px 14px',
+                border: '1px solid var(--tea-color-border-primary-default)',
+                borderRadius: 6,
+                background: 'var(--tea-color-bg-secondary-default)',
+              }}
+            >
+              <div>
+                <Text style={{ fontSize: 13, fontWeight: 600, display: 'block' }}>
+                  {t('settings.nav.quick.title')}
+                </Text>
+                <Text theme="weak" style={{ fontSize: 12, marginTop: 4, display: 'block' }}>
+                  {t('settings.nav.quick.desc')}
+                </Text>
+              </div>
+              <Button
+                type="weak"
+                style={{ marginTop: 12, alignSelf: 'flex-start' }}
+                onClick={() => {
+                  onClose();
+                  navigate('/docs/quick');
+                }}
+              >
+                {t('settings.nav.quick.btn')}
+              </Button>
+            </div>
+
+            {/* 3. 最佳实践 */}
+            <div
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'space-between',
+                padding: '12px 14px',
+                border: '1px solid var(--tea-color-border-primary-default)',
+                borderRadius: 6,
+                background: 'var(--tea-color-bg-secondary-default)',
+              }}
+            >
+              <div>
+                <Text style={{ fontSize: 13, fontWeight: 600, display: 'block' }}>
+                  {t('settings.nav.practice.title')}
+                </Text>
+                <Text theme="weak" style={{ fontSize: 12, marginTop: 4, display: 'block' }}>
+                  {t('settings.nav.practice.desc')}
+                </Text>
+              </div>
+              <Button
+                type="weak"
+                style={{ marginTop: 12, alignSelf: 'flex-start' }}
+                onClick={() => {
+                  onClose();
+                  navigate('/docs/practice');
+                }}
+              >
+                {t('settings.nav.practice.btn')}
+              </Button>
+            </div>
+
+            {/* 4. 命令速查 */}
+            <div
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'space-between',
+                padding: '12px 14px',
+                border: '1px solid var(--tea-color-border-primary-default)',
+                borderRadius: 6,
+                background: 'var(--tea-color-bg-secondary-default)',
+              }}
+            >
+              <div>
+                <Text style={{ fontSize: 13, fontWeight: 600, display: 'block' }}>
+                  {t('settings.nav.commands.title')}
+                </Text>
+                <Text theme="weak" style={{ fontSize: 12, marginTop: 4, display: 'block' }}>
+                  {t('settings.nav.commands.desc')}
+                </Text>
+              </div>
+              <Button
+                type="weak"
+                style={{ marginTop: 12, alignSelf: 'flex-start' }}
+                onClick={() => {
+                  onClose();
+                  navigate('/docs/commands');
+                }}
+              >
+                {t('settings.nav.commands.btn')}
+              </Button>
             </div>
           </div>
         </div>
-      )}
+
+        <div>
+          <Text theme="label" style={{ display: 'block', marginBottom: 8 }}>
+            {t('settings.title')}
+          </Text>
+          <Text theme="weak" style={{ display: 'block', marginBottom: 16, fontSize: 12 }}>
+            {t('settings.desc')}
+          </Text>
+          {error && <Alert type="error" style={{ marginBottom: 12 }}>{error}</Alert>}
+          {loading && <Alert type="info" style={{ marginBottom: 12 }}>{t('settings.loadingConfig')}</Alert>}
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {RESOURCE_MODULES.map((mod) => (
+              <div
+                key={mod.id}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '10px 12px',
+                  border: '1px solid var(--tea-color-border-primary-default)',
+                  borderRadius: 6,
+                  background: enabled[mod.id]
+                    ? 'var(--tea-color-bg-brand-lighten-default)'
+                    : 'var(--tea-color-bg-primary-default)',
+                  transition: 'background-color 0.15s',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+                  <span style={{ color: 'var(--tea-color-text-secondary)', flexShrink: 0 }}>
+                    {mod.icon}
+                  </span>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <Text style={{ fontSize: 13, fontWeight: 500 }}>
+                        {t(mod.labelKey)}
+                      </Text>
+                      {savingKey === mod.paramKey ? (
+                        <Tag theme="warning" variant="soft" size="sm">{t('settings.tag.saving')}</Tag>
+                      ) : enabled[mod.id] ? (
+                        <Tag theme="success" variant="soft" size="sm">{t('settings.tag.enabled')}</Tag>
+                      ) : (
+                        <Tag theme="default" variant="soft" size="sm">{t('settings.tag.disabled')}</Tag>
+                      )}
+                    </div>
+                    <Text theme="weak" style={{ fontSize: 12, marginTop: 2, display: 'block' }}>
+                      {t(mod.descKey)}
+                    </Text>
+                  </div>
+                </div>
+                <Switch
+                  value={enabled[mod.id]}
+                  disabled={loading || savingKey === mod.paramKey}
+                  onChange={(v) => void handleToggle(mod, v)}
+                />
+              </div>
+            ))}
+          </div>
+        </div>
       </Modal.Body>
     </Modal>
   );

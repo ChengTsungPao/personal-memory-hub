@@ -71,16 +71,19 @@ export function ConsoleLayout() {
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // 使用说明页为独立页（自带返回按钮与页头），不占用多标签页栏
-  const isGuide = location.pathname === '/guide';
+  // 独立全屏页（自带返回按钮与页头），不占用多标签页栏
+  const isStandalonePage =
+    location.pathname.startsWith('/models') ||
+    location.pathname.startsWith('/docs') ||
+    location.pathname === '/guide';
 
-  const [openPages, setOpenPages] = useState<PageId[]>(() => (isGuide ? [] : [activePage]));
+  const [openPages, setOpenPages] = useState<PageId[]>(() => (isStandalonePage ? [] : [activePage]));
 
   useEffect(() => {
-    // /guide 独立页不把 workbench_board 等页面追加进标签栏，避免返回时多出标签
-    if (isGuide) return;
+    // 独立页不把 workbench_board 等页面追加进标签栏，避免返回时多出标签
+    if (isStandalonePage) return;
     setOpenPages((prev) => (prev.includes(activePage) ? prev : [...prev, activePage]));
-  }, [activePage, isGuide]);
+  }, [activePage, isStandalonePage]);
 
   // 侧栏默认展开；手机宽度（<=768px，与 GlobalHeader 的断点一致）首次进入时
   // 自动收起以腾出内容区空间。之后仍可用 fold 按钮手动切换，不会跟用户的
@@ -232,7 +235,7 @@ export function ConsoleLayout() {
             </Menu>
           </Sider>
           <Content>
-            {!isGuide && (
+            {!isStandalonePage && (
               <TabBar
                 pages={openPages}
                 activePage={activePage}

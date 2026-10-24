@@ -118,7 +118,22 @@ export const enUS = {
     'Login response is missing user info (data.user is null). Please contact backend to verify the auth/verify contract.',
 
   // ===== SettingsDialog =====
-  'settings.caption': 'Settings · Permissions',
+  'settings.caption': 'System Settings',
+  'settings.navSection.title': 'System & Documentation',
+  'settings.nav.models.title': 'Model Settings (LLM Backend)',
+  'settings.nav.models.desc': 'Switch LLM Gateway / OpenRouter / Claude LLM Proxy',
+  'settings.nav.models.btn': 'Adjust Models',
+  'settings.nav.quick.title': 'Quick Start',
+  'settings.nav.quick.desc': 'Proxy setup, IDE integration, and 3-step setup guide',
+  'settings.nav.quick.btn': 'Quick Start',
+  'settings.nav.practice.title': 'Best Practices',
+  'settings.nav.practice.desc': 'Team collaboration and personal OPC best practices',
+  'settings.nav.practice.btn': 'Best Practices',
+  'settings.nav.commands.title': 'Command Reference',
+  'settings.nav.commands.desc': 'Memory CLI command reference and troubleshooting',
+  'settings.nav.commands.btn': 'Commands',
+  'models.title': 'Model Settings (LLM Backend)',
+  'models.subtitle': 'Manage extraction backend, switch LLM Gateway, OpenRouter, and Claude LLM Proxy',
   'settings.title': 'Resource Module Toggles',
   'settings.desc':
     'Toggles are saved for the current user. When disabled, the proxy will not inject the corresponding capability for that user. Changes take effect immediately for new sessions.',

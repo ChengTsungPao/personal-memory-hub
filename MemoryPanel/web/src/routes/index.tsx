@@ -4,7 +4,7 @@
  * 使用 react-router 的 createBrowserRouter / RouterProvider。
  * ConsoleLayout 作为父路由，各页面作为子路由。
  */
-import { createHashRouter, type RouteObject } from 'react-router-dom';
+import { createHashRouter, Navigate, type RouteObject } from 'react-router-dom';
 import { ConsoleLayout } from '@/layouts/ConsoleLayout';
 import { WorkbenchPage } from '@/pages/WorkbenchPage';
 import { WikiPage } from '@/pages/WikiPage';
@@ -15,6 +15,7 @@ import { MembersPage } from '@/pages/MembersPage';
 import { AgentsPage } from '@/pages/AgentsPage';
 import { ApiKeysPage } from '@/pages/ApiKeysPage';
 import { GuidePage } from '@/pages/GuidePage';
+import { ModelSettingsPage } from '@/pages/ModelSettingsPage';
 import { AnalyticsPage } from '@/pages/AnalyticsPage';
 
 export const routes: RouteObject[] = [
@@ -31,7 +32,10 @@ export const routes: RouteObject[] = [
       { path: 'team/members', element: <MembersPage /> },
       { path: 'team/agents', element: <AgentsPage /> },
       { path: 'team/api-keys', element: <ApiKeysPage /> },
-      { path: 'guide', element: <GuidePage /> },
+      { path: 'models', element: <ModelSettingsPage /> },
+      { path: 'docs', element: <GuidePage /> },
+      { path: 'docs/:tab', element: <GuidePage /> },
+      { path: 'guide', element: <Navigate to="/docs/quick" replace /> },
     ],
   },
 ];

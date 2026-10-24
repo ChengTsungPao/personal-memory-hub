@@ -7,8 +7,9 @@
  * 沒裝這個選配元件）整張卡片會顯示「無法連線」，不影響頁面其他部分。
  */
 import { useCallback, useEffect, useState } from 'react';
+import './style.css';
 
-type BackendMode = 'proxy' | 'qwen' | 'openrouter' | 'unknown';
+type BackendMode = 'gateway' | 'openrouter' | 'proxy' | 'unknown';
 
 interface BackendStatus {
   mode: BackendMode;
@@ -66,7 +67,7 @@ export function LlmBackendCard() {
     load();
   }, [load]);
 
-  const handleSwitch = async (mode: 'proxy' | 'qwen' | 'openrouter') => {
+  const handleSwitch = async (mode: 'gateway' | 'openrouter' | 'proxy') => {
     setSwitching(mode);
     setError('');
     try {
@@ -104,12 +105,12 @@ export function LlmBackendCard() {
       <div className="guide-llm-backend-head">
         <h3>LLM 抽取後端</h3>
         <span className={`guide-llm-backend-badge ${status?.mode ?? 'unknown'}`}>
-          {status?.mode === 'proxy'
-            ? 'Claude 訂閱 (Proxy)'
-            : status?.mode === 'qwen'
-              ? '本地 Qwen'
-              : status?.mode === 'openrouter'
-                ? 'OpenRouter'
+          {status?.mode === 'gateway'
+            ? 'LLM Gateway'
+            : status?.mode === 'openrouter'
+              ? 'OpenRouter'
+              : status?.mode === 'proxy'
+                ? 'Claude LLM Proxy'
                 : '未知'}
         </span>
       </div>
@@ -118,19 +119,11 @@ export function LlmBackendCard() {
       <div className="guide-llm-backend-switch">
         <button
           type="button"
-          className={status?.mode === 'qwen' ? 'active' : ''}
-          disabled={switching !== null || status?.mode === 'qwen'}
-          onClick={() => handleSwitch('qwen')}
+          className={status?.mode === 'gateway' ? 'active' : ''}
+          disabled={switching !== null || status?.mode === 'gateway'}
+          onClick={() => handleSwitch('gateway')}
         >
-          {switching === 'qwen' ? '切換中…' : '切到本地 Qwen'}
-        </button>
-        <button
-          type="button"
-          className={status?.mode === 'proxy' ? 'active' : ''}
-          disabled={switching !== null || status?.mode === 'proxy'}
-          onClick={() => handleSwitch('proxy')}
-        >
-          {switching === 'proxy' ? '切換中…' : '切到 Claude 訂閱'}
+          {switching === 'gateway' ? '切換中…' : '切到 LLM Gateway'}
         </button>
         <button
           type="button"
@@ -140,12 +133,32 @@ export function LlmBackendCard() {
         >
           {switching === 'openrouter' ? '切換中…' : '切到 OpenRouter'}
         </button>
+        <button
+          type="button"
+          className={status?.mode === 'proxy' ? 'active' : ''}
+          disabled={switching !== null || status?.mode === 'proxy'}
+          onClick={() => handleSwitch('proxy')}
+        >
+          {switching === 'proxy' ? '切換中…' : '切到 Claude LLM Proxy'}
+        </button>
       </div>
+
+      {status?.mode === 'gateway' && (
+        <p className="guide-llm-backend-warning" style={{ background: '#f0fdf4', borderColor: '#bbf7d0', color: '#166534' }}>
+          ⓘ <b>LLM Gateway 模式</b>：支援標準 OpenAI API 格式與 tool-calling。
+        </p>
+      )}
+
+      {status?.mode === 'openrouter' && (
+        <p className="guide-llm-backend-warning" style={{ background: '#eef2ff', borderColor: '#c7d2fe', color: '#3730a3' }}>
+          ⓘ OpenRouter 模式：直連 OpenRouter 雲端端點，需在 .env 設定 OPENROUTER_API_KEY 與 OPENROUTER_MODEL。
+        </p>
+      )}
+
       {status?.mode === 'proxy' && (
         <p className="guide-llm-backend-warning">
-          ⓘ Claude 訂閱模式下，L2 場景抽取、L3 人格生成靠 proxy 自己模擬 tool-calling（請模型輸出
-          JSON 表示要呼叫的工具，proxy 再轉成標準格式）運作——機制已驗證可行，但還沒在正式 pipeline
-          的即時觸發上實際跑過，遇到問題請切回 Qwen 或 OpenRouter。Knowledge wiki 摘要不受影響
+          ⓘ Claude LLM Proxy 模式下，L2 場景抽取、L3 人格生成靠 proxy 自己模擬 tool-calling（請模型輸出
+          JSON 表示要呼叫的工具，proxy 再轉成標準格式）運作。Knowledge wiki 摘要不受影響
           （它有自己獨立的 LLM 綁定，不跟著這裡切換）。
         </p>
       )}
