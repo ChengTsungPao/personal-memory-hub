@@ -19,7 +19,7 @@ const MAX_RETRIES = 5;
 const MAX_DEPTH = 6;
 
 export interface NotionConnectorOptions {
-  token: string;
+  token: string | (() => string);
   /** Injectable for tests. */
   fetchFn?: typeof fetch;
   /** Injectable for tests. */
@@ -61,7 +61,7 @@ interface Paged<T> {
 export class NotionConnector implements IKnowledgeConnector {
   readonly id = "notion";
 
-  private readonly token: string;
+  private readonly token: string | (() => string);
   private readonly fetchFn: typeof fetch;
   private readonly sleep: (ms: number) => Promise<void>;
   private readonly minIntervalMs: number;
@@ -74,8 +74,12 @@ export class NotionConnector implements IKnowledgeConnector {
     this.minIntervalMs = opts.minIntervalMs ?? 350;
   }
 
+  private resolveToken(): string {
+    return (typeof this.token === "function" ? this.token() : this.token).trim();
+  }
+
   isConfigured(): boolean {
-    return this.token.length > 0;
+    return this.resolveToken().length > 0;
   }
 
   async listDocs(): Promise<ConnectorDocRef[]> {
@@ -193,6 +197,7 @@ export class NotionConnector implements IKnowledgeConnector {
   // ── HTTP ──
 
   private async request<T>(method: "GET" | "POST", path: string, body?: unknown): Promise<T> {
+    const token = this.resolveToken();
     for (let attempt = 0; ; attempt++) {
       const wait = this.lastRequestAt + this.minIntervalMs - Date.now();
       if (wait > 0) await this.sleep(wait);
@@ -201,7 +206,7 @@ export class NotionConnector implements IKnowledgeConnector {
       const resp = await this.fetchFn(`${NOTION_API}${path}`, {
         method,
         headers: {
-          Authorization: `Bearer ${this.token}`,
+          Authorization: `Bearer ${token}`,
           "Notion-Version": NOTION_VERSION,
           "Content-Type": "application/json",
         },
@@ -210,7 +215,7 @@ export class NotionConnector implements IKnowledgeConnector {
 
       if (resp.ok) return (await resp.json()) as T;
 
-      if (resp.status === 401) throw new Error("Notion rejected the token (401): check KNOWLEDGE_CONNECTOR_NOTION_TOKEN");
+      if (resp.status === 401) throw new Error("Notion rejected the token (401): check Notion Integration Token");
       const retryable = resp.status === 429 || resp.status >= 500;
       if (!retryable || attempt >= MAX_RETRIES) {
         throw new Error(`Notion API ${method} ${path} failed: HTTP ${resp.status}`);

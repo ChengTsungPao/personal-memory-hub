@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { Alert, Button, Form, Modal, Switch, Tag, Text } from 'tea-component';
+import { Alert, Button, Form, Input, Modal, Switch, Tag, Text } from 'tea-component';
 import { knowledgeApi, type ConnectorStatusItem } from '@/lib/api/knowledge-api';
 import { tea } from '@/lib/tea-bridge';
 import { formatShortTime } from '../constants/wiki-constants';
@@ -15,12 +15,22 @@ export function ConnectorsModal({ visible, activeTeamId, onClose, onSynced }: Co
   const [connectors, setConnectors] = useState<ConnectorStatusItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [tokenDrafts, setTokenDrafts] = useState<Record<string, string>>({});
+  const [wikiNameDrafts, setWikiNameDrafts] = useState<Record<string, string>>({});
 
   const loadStatus = useCallback(async () => {
     setLoading(true);
     try {
       const res = await knowledgeApi.connectors.status();
-      setConnectors(res.connectors ?? []);
+      const items = res.connectors ?? [];
+      setConnectors(items);
+      setWikiNameDrafts((prev) => {
+        const next = { ...prev };
+        for (const it of items) {
+          if (next[it.id] === undefined) next[it.id] = it.wiki_name;
+        }
+        return next;
+      });
     } catch (err) {
       tea.notify.error(err instanceof Error ? err.message : '載入外部知識源狀態失敗');
     } finally {
@@ -50,6 +60,26 @@ export function ConnectorsModal({ visible, activeTeamId, onClose, onSynced }: Co
     }, 2500);
     return () => clearInterval(timer);
   }, [visible, connectors, onSynced]);
+
+  const handleSaveConfig = async (item: ConnectorStatusItem) => {
+    setBusyId(item.id);
+    try {
+      const rawToken = (tokenDrafts[item.id] ?? '').trim();
+      const rawWikiName = (wikiNameDrafts[item.id] ?? item.wiki_name).trim();
+      await knowledgeApi.connectors.configure(item.id, {
+        ...(rawToken ? { token: rawToken } : {}),
+        ...(rawWikiName ? { wiki_name: rawWikiName } : {}),
+        team_id: activeTeamId ?? undefined,
+      });
+      setTokenDrafts((prev) => ({ ...prev, [item.id]: '' }));
+      tea.notify.success(`已儲存 ${item.id.toUpperCase()} 設定`);
+      await loadStatus();
+    } catch (err) {
+      tea.notify.error(err instanceof Error ? err.message : '儲存設定失敗');
+    } finally {
+      setBusyId(null);
+    }
+  };
 
   const handleToggle = async (item: ConnectorStatusItem, nextEnabled: boolean) => {
     setBusyId(item.id);
@@ -84,10 +114,8 @@ export function ConnectorsModal({ visible, activeTeamId, onClose, onSynced }: Co
     <Modal visible caption="外部知識源同步 (Connectors)" size="m" onClose={onClose}>
       <Modal.Body>
         {connectors.length > 0 && !connectors[0]?.available && (
-          <Alert type="info" style={{ marginBottom: 16 }}>
-            系統尚未啟用外部知識源總開關。請於 Knowledge Service 環境變數設定{' '}
-            <code>KNOWLEDGE_CONNECTORS_ENABLED=true</code> 與對應的 Token（例如{' '}
-            <code>KNOWLEDGE_CONNECTOR_NOTION_TOKEN=ntn_...</code>）後重啟服務。
+          <Alert type="warning" style={{ marginBottom: 16 }}>
+            系統管理員已透過 <code>KNOWLEDGE_CONNECTORS_ENABLED=false</code> 關閉外部知識源同步功能。
           </Alert>
         )}
 
@@ -97,6 +125,8 @@ export function ConnectorsModal({ visible, activeTeamId, onClose, onSynced }: Co
           connectors.map((item) => {
             const stats = item.last_stats;
             const isBusy = busyId === item.id || item.running;
+            const draftToken = tokenDrafts[item.id] ?? '';
+            const draftWikiName = wikiNameDrafts[item.id] ?? item.wiki_name;
             return (
               <div
                 key={item.id}
@@ -112,11 +142,11 @@ export function ConnectorsModal({ visible, activeTeamId, onClose, onSynced }: Co
                     <Text reset style={{ fontWeight: 600, fontSize: 15, textTransform: 'capitalize' }}>
                       {item.id}
                     </Text>
-                    <Tag theme={item.available ? 'success' : 'default'}>
-                      {item.available ? '總開關已開' : '總開關關閉'}
+                    <Tag theme={item.has_token ? 'success' : 'warning'}>
+                      {item.has_token ? 'Token 已設定' : '尚未設定 Token'}
                     </Tag>
-                    <Tag theme={item.configured ? 'primary' : 'warning'}>
-                      {item.configured ? '憑證已配置' : '待配置 Token / Team'}
+                    <Tag theme={item.enabled ? 'primary' : 'default'}>
+                      {item.enabled ? '自動/手動同步開啟' : '已停用'}
                     </Tag>
                     {item.running && <Tag theme="warning">同步中...</Tag>}
                   </div>
@@ -130,7 +160,7 @@ export function ConnectorsModal({ visible, activeTeamId, onClose, onSynced }: Co
                     </Switch>
                     <Button
                       type="primary"
-                      disabled={!item.available || !item.enabled || isBusy}
+                      disabled={!item.available || !item.enabled || !item.has_token || isBusy}
                       loading={item.running}
                       onClick={() => handleTrigger(item)}
                     >
@@ -139,10 +169,45 @@ export function ConnectorsModal({ visible, activeTeamId, onClose, onSynced }: Co
                   </div>
                 </div>
 
-                <Form layout="inline">
-                  <Form.Item label="目標 Wiki">
-                    <Text>{item.wiki_name}</Text>
+                <Form>
+                  <Form.Item
+                    label="Integration Token"
+                    message="於 Notion 建立 Internal Integration 取得 ntn_... Token，並在欲同步的頂層頁面點選「⋯ → Connect to」授權該 Integration。"
+                  >
+                    <Input
+                      type="password"
+                      size="full"
+                      disabled={!item.available || isBusy}
+                      value={draftToken}
+                      placeholder={
+                        item.has_token
+                          ? '已設定 Token（留空則保留原值，輸入新值可覆蓋）'
+                          : '貼上 Notion Integration Secret (ntn_...)'
+                      }
+                      onChange={(val) => setTokenDrafts((prev) => ({ ...prev, [item.id]: val }))}
+                    />
                   </Form.Item>
+                  <Form.Item label="目標 Wiki 名稱">
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                      <Input
+                        size="m"
+                        disabled={!item.available || isBusy}
+                        value={draftWikiName}
+                        placeholder="Notion"
+                        onChange={(val) => setWikiNameDrafts((prev) => ({ ...prev, [item.id]: val }))}
+                      />
+                      <Button
+                        type="weak"
+                        disabled={!item.available || isBusy}
+                        onClick={() => handleSaveConfig(item)}
+                      >
+                        儲存設定
+                      </Button>
+                    </div>
+                  </Form.Item>
+                </Form>
+
+                <Form layout="inline" style={{ marginTop: 8 }}>
                   <Form.Item label="排程週期">
                     <Text>{item.interval_hours > 0 ? `每 ${item.interval_hours} 小時` : '僅手動觸發'}</Text>
                   </Form.Item>

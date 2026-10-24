@@ -162,6 +162,7 @@ export interface ConnectorSyncStats {
 export interface ConnectorStatusItem {
   id: string;
   available: boolean;
+  has_token: boolean;
   configured: boolean;
   enabled: boolean;
   running: boolean;
@@ -174,6 +175,20 @@ export interface ConnectorStatusItem {
   last_error: string | null;
   last_stats: ConnectorSyncStats | null;
   tracked_docs: number;
+}
+
+export interface ConnectorConfigurePayload {
+  token?: string | null;
+  wiki_name?: string | null;
+  team_id?: string;
+  enabled?: boolean;
+}
+
+export interface ConnectorConfigureResult {
+  connector_id: string;
+  has_token: boolean;
+  configured: boolean;
+  enabled: boolean;
 }
 
 // ── Port ──
@@ -214,6 +229,7 @@ export interface KnowledgeClientPort {
 
   // Connectors
   connectorsStatus(): Promise<{ connectors: ConnectorStatusItem[] }>;
+  connectorConfigure(connectorId: string, payload: ConnectorConfigurePayload): Promise<ConnectorConfigureResult>;
   connectorSetEnabled(connectorId: string, enabled: boolean, teamId?: string): Promise<{ connector_id: string; enabled: boolean }>;
   connectorTrigger(connectorId: string, teamId?: string): Promise<{ connector_id: string; triggered: boolean }>;
 }

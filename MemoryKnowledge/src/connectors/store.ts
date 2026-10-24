@@ -1,5 +1,5 @@
 /**
- * ConnectorStore — persisted per-connector state (runtime switch, tenant binding, last run, manifest).
+ * ConnectorStore — persisted per-connector state (runtime switch, tenant binding, token, last run, manifest).
  *
  * Decoupled from IKnowledgeStore, same shape as `createLlmBindingStore`: one small table
  * keyed by connector id. A connector with no row is simply "disabled, never run".
@@ -24,6 +24,8 @@ export interface ConnectorState {
   enabled: boolean;
   service_id: string | null;
   team_id: string | null;
+  token: string | null;
+  wiki_name: string | null;
   last_run_at: string | null;
   last_success_at: string | null;
   last_status: ConnectorRunStatus | null;
@@ -48,10 +50,19 @@ export interface SetEnabledOpts {
   teamId?: string;
 }
 
+export interface ConfigureOpts {
+  token?: string | null;
+  wikiName?: string | null;
+  serviceId?: string;
+  teamId?: string;
+  enabled?: boolean;
+}
+
 export interface IConnectorStore {
   get(connectorId: string): ConnectorState;
   setEnabled(connectorId: string, enabled: boolean, opts?: SetEnabledOpts): ConnectorState;
   setTarget(connectorId: string, opts: SetEnabledOpts): ConnectorState;
+  configure(connectorId: string, opts: ConfigureOpts): ConnectorState;
   /** Mark a run as started (status=running). */
   markRunning(connectorId: string): void;
   /** Record the outcome of a run. */
@@ -64,6 +75,8 @@ function emptyState(connectorId: string): ConnectorState {
     enabled: false,
     service_id: null,
     team_id: null,
+    token: null,
+    wiki_name: null,
     last_run_at: null,
     last_success_at: null,
     last_status: null,
@@ -91,6 +104,8 @@ function toState(row: Row): ConnectorState {
     enabled: row.enabled === 1,
     service_id: row.serviceId ?? null,
     team_id: row.teamId ?? null,
+    token: row.token ?? null,
+    wiki_name: row.wikiName ?? null,
     last_run_at: row.lastRunAt,
     last_success_at: row.lastSuccessAt,
     last_status: (row.lastStatus as ConnectorRunStatus | null) ?? null,
@@ -137,6 +152,22 @@ export function createConnectorStore(db: Db): IConnectorStore {
         ...(opts.serviceId ? { serviceId: opts.serviceId } : {}),
         ...(opts.teamId ? { teamId: opts.teamId } : {}),
       });
+    },
+
+    configure(connectorId, opts) {
+      const updates: Partial<Omit<Row, "connectorId" | "updatedAt">> = {};
+      if (opts.token !== undefined) {
+        const trimmed = opts.token ? opts.token.trim() : "";
+        updates.token = trimmed || null;
+      }
+      if (opts.wikiName !== undefined) {
+        const trimmed = opts.wikiName ? opts.wikiName.trim() : "";
+        updates.wikiName = trimmed || null;
+      }
+      if (opts.serviceId) updates.serviceId = opts.serviceId;
+      if (opts.teamId) updates.teamId = opts.teamId;
+      if (opts.enabled !== undefined) updates.enabled = opts.enabled ? 1 : 0;
+      return patch(connectorId, updates);
     },
 
     markRunning(connectorId) {

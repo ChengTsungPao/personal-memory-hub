@@ -10,7 +10,7 @@
 import { createLogger } from "../logger.js";
 import type { WikiService } from "../store/index.js";
 import type { ConnectorsConfig } from "./config.js";
-import type { IConnectorStore, Manifest, ConnectorState, SetEnabledOpts } from "./store.js";
+import type { IConnectorStore, Manifest, ConnectorState, SetEnabledOpts, ConfigureOpts } from "./store.js";
 import type { ConnectorDocRef, ConnectorSyncStats, IKnowledgeConnector } from "./types.js";
 
 const log = createLogger("connector-sync");
@@ -27,7 +27,9 @@ export interface ConnectorStatusView {
   id: string;
   /** Operator gate (KNOWLEDGE_CONNECTORS_ENABLED). When false nothing can run. */
   available: boolean;
-  /** Credentials/target settings present. Never exposes the secrets themselves. */
+  /** Whether a token / credential is present (never exposes the secret itself). */
+  has_token: boolean;
+  /** Credentials + target tenant settings present. Never exposes the secrets themselves. */
   configured: boolean;
   enabled: boolean;
   running: boolean;
@@ -84,11 +86,12 @@ export class ConnectorSyncService {
     return {
       id: c.id,
       available: this.config.enabled,
+      has_token: c.isConfigured(),
       configured: this.isConfigured(c),
       enabled: s.enabled,
       running: this.running.has(c.id),
       interval_hours: this.config.intervalHours,
-      wiki_name: this.wikiNames[c.id] ?? c.id,
+      wiki_name: this.resolveWikiName(c.id),
       team_id: teamId || null,
       last_run_at: s.last_run_at,
       last_success_at: s.last_success_at,
@@ -97,6 +100,11 @@ export class ConnectorSyncService {
       last_stats: s.last_stats,
       tracked_docs: Object.keys(s.manifest).length,
     };
+  }
+
+  private resolveWikiName(connectorId: string): string {
+    const s = this.store.get(connectorId);
+    return s.wiki_name || this.wikiNames[connectorId] || connectorId;
   }
 
   private resolveTarget(connectorId: string): { serviceId: string; teamId: string } {
@@ -114,10 +122,20 @@ export class ConnectorSyncService {
 
   // ── control side ──
 
+  configure(connectorId: string, opts: ConfigureOpts): ActionResult {
+    if (!this.connectors.has(connectorId)) return { ok: false, reason: `unknown connector: ${connectorId}` };
+    if (!this.config.enabled) {
+      return { ok: false, reason: "connectors are disabled by the operator (KNOWLEDGE_CONNECTORS_ENABLED=false)" };
+    }
+    this.store.configure(connectorId, opts);
+    log.info(`connector ${connectorId} configured`);
+    return { ok: true };
+  }
+
   setEnabled(connectorId: string, enabled: boolean, opts?: SetEnabledOpts): ActionResult {
     if (!this.connectors.has(connectorId)) return { ok: false, reason: `unknown connector: ${connectorId}` };
     if (!this.config.enabled) {
-      return { ok: false, reason: "connectors are disabled by the operator (KNOWLEDGE_CONNECTORS_ENABLED)" };
+      return { ok: false, reason: "connectors are disabled by the operator (KNOWLEDGE_CONNECTORS_ENABLED=false)" };
     }
     this.store.setEnabled(connectorId, enabled, opts);
     log.info(`connector ${connectorId} ${enabled ? "enabled" : "disabled"}`);
@@ -138,8 +156,9 @@ export class ConnectorSyncService {
   private blockedReason(connectorId: string): string | null {
     const c = this.connectors.get(connectorId);
     if (!c) return `unknown connector: ${connectorId}`;
-    if (!this.config.enabled) return "connectors are disabled by the operator (KNOWLEDGE_CONNECTORS_ENABLED)";
-    if (!this.isConfigured(c)) return "connector is not configured (token / service id / team id missing)";
+    if (!this.config.enabled) return "connectors are disabled by the operator (KNOWLEDGE_CONNECTORS_ENABLED=false)";
+    if (!c.isConfigured()) return "connector token is not configured — set Notion Integration Token first";
+    if (!this.isConfigured(c)) return "connector target (service_id / team_id) is missing";
     if (!this.store.get(connectorId).enabled) return "connector is disabled — enable it first";
     if (this.running.has(connectorId)) return "a sync is already running";
     return null;
@@ -202,7 +221,7 @@ export class ConnectorSyncService {
     const { row, existed } = this.wiki.create({
       service_id: serviceId,
       team_id: teamId,
-      name: this.wikiNames[connector.id] ?? connector.id,
+      name: this.resolveWikiName(connector.id),
       source_type: connector.id,
     });
     const wikiId = row.wiki_id;

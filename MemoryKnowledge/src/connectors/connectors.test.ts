@@ -39,6 +39,8 @@ function createInMemoryConnectorStore(): IConnectorStore {
         enabled: false,
         service_id: null,
         team_id: null,
+        token: null,
+        wiki_name: null,
         last_run_at: null,
         last_success_at: null,
         last_status: null,
@@ -68,6 +70,16 @@ function createInMemoryConnectorStore(): IConnectorStore {
       const s = ensure(id);
       if (opts.serviceId) s.service_id = opts.serviceId;
       if (opts.teamId) s.team_id = opts.teamId;
+      return this.get(id);
+    },
+    configure(id, opts) {
+      const s = ensure(id);
+      if (opts.token !== undefined) s.token = opts.token ? opts.token.trim() || null : null;
+      if (opts.wikiName !== undefined) s.wiki_name = opts.wikiName ? opts.wikiName.trim() || null : null;
+      if (opts.serviceId) s.service_id = opts.serviceId;
+      if (opts.teamId) s.team_id = opts.teamId;
+      if (opts.enabled !== undefined) s.enabled = opts.enabled;
+      s.updated_at = new Date().toISOString();
       return this.get(id);
     },
     markRunning(id) {
@@ -140,12 +152,17 @@ function createFakeWikiPort() {
 }
 
 describe("resolveConnectorsConfig", () => {
-  it("defaults to disabled and weekly (168h) interval", () => {
+  it("defaults to available (enabled=true) and weekly (168h) interval while individual connectors remain off in store", () => {
     const cfg = resolveConnectorsConfig({});
-    expect(cfg.enabled).toBe(false);
+    expect(cfg.enabled).toBe(true);
     expect(cfg.intervalHours).toBe(DEFAULT_INTERVAL_HOURS);
     expect(cfg.notion.token).toBe("");
     expect(cfg.notion.wikiName).toBe("Notion");
+  });
+
+  it("can be explicitly disabled via KNOWLEDGE_CONNECTORS_ENABLED=false", () => {
+    const cfg = resolveConnectorsConfig({ KNOWLEDGE_CONNECTORS_ENABLED: "false" });
+    expect(cfg.enabled).toBe(false);
   });
 
   it("parses explicit values and manual-only interval=0", () => {
@@ -386,26 +403,19 @@ describe("ConnectorSyncService incremental sync", () => {
 });
 
 describe("Connector routes & service auth", () => {
-  it("allows unauthenticated status queries but requires Bearer serviceKey for set-enabled and trigger", async () => {
+  it("allows unauthenticated status queries and supports configuring token/wiki_name via Bearer-protected /configure without leaking token", async () => {
     const store = createInMemoryConnectorStore();
     const { port } = createFakeWikiPort();
-    const config = resolveConnectorsConfig({
-      KNOWLEDGE_CONNECTORS_ENABLED: "true",
-      KNOWLEDGE_CONNECTORS_SERVICE_ID: "svc-1",
-      KNOWLEDGE_CONNECTORS_TEAM_ID: "team-1",
-      KNOWLEDGE_CONNECTOR_NOTION_TOKEN: "ntn_123",
+    // Start with empty env token — user will configure it via UI (/v3/connectors/configure)
+    const config = resolveConnectorsConfig({});
+    const notionConnector = new NotionConnector({
+      token: () => store.get("notion").token || config.notion.token,
     });
-    const fakeConnector: IKnowledgeConnector = {
-      id: "notion",
-      isConfigured: () => true,
-      listDocs: async () => [],
-      fetchDoc: async () => "",
-    };
     const service = new ConnectorSyncService({
       config,
       store,
       wikiService: port,
-      connectors: [fakeConnector],
+      connectors: [notionConnector],
       wikiNames: { notion: "Notion" },
     });
 
@@ -415,19 +425,47 @@ describe("Connector routes & service auth", () => {
     api.route("/", createConnectorRoutes({ service }));
     app.route("/v3", api);
 
-    // Status works without auth (both GET and POST for MCP)
+    // Status works without auth (both GET and POST for MCP) and initially has_token=false
     const getRes = await app.request("/v3/connectors/status");
     expect(getRes.status).toBe(200);
-    const postStatusRes = await app.request("/v3/connectors/status", { method: "POST" });
-    expect(postStatusRes.status).toBe(200);
+    const initialJson = (await getRes.json()) as { data: { connectors: Array<Record<string, unknown>> } };
+    expect(initialJson.data.connectors[0]!.has_token).toBe(false);
+    expect(initialJson.data.connectors[0]!.configured).toBe(false);
 
-    // set-enabled without auth -> 401
-    const unauthSet = await app.request("/v3/connectors/set-enabled", {
+    // configure without auth -> 401
+    const unauthCfg = await app.request("/v3/connectors/configure", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ connector_id: "notion", enabled: true }),
+      body: JSON.stringify({ connector_id: "notion", token: "ntn_ui_secret" }),
     });
-    expect(unauthSet.status).toBe(401);
+    expect(unauthCfg.status).toBe(401);
+
+    // configure with Bearer token -> 200, sets token, wiki_name, service_id, team_id
+    const authCfg = await app.request("/v3/connectors/configure", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer secret-admin-key",
+        "x-tdai-service-id": "svc-ui",
+      },
+      body: JSON.stringify({
+        connector_id: "notion",
+        token: "ntn_ui_secret",
+        wiki_name: "My Notion Wiki",
+        team_id: "team-ui",
+      }),
+    });
+    expect(authCfg.status).toBe(200);
+
+    // Verify status reflects has_token=true, configured=true, wiki_name="My Notion Wiki", and never leaks the token string
+    const postStatusRes = await app.request("/v3/connectors/status", { method: "POST" });
+    expect(postStatusRes.status).toBe(200);
+    const statusText = await postStatusRes.text();
+    expect(statusText).not.toContain("ntn_ui_secret");
+    const afterCfg = JSON.parse(statusText) as { data: { connectors: Array<Record<string, unknown>> } };
+    expect(afterCfg.data.connectors[0]!.has_token).toBe(true);
+    expect(afterCfg.data.connectors[0]!.configured).toBe(true);
+    expect(afterCfg.data.connectors[0]!.wiki_name).toBe("My Notion Wiki");
 
     // set-enabled with Bearer token -> 200
     const authSet = await app.request("/v3/connectors/set-enabled", {

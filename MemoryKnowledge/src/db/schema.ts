@@ -155,6 +155,8 @@ export const knowledgeConnector = sqliteTable("knowledge_connector", {
   enabled: integer("enabled").notNull().default(0),
   serviceId: text("service_id"),
   teamId: text("team_id"),
+  token: text("token"),
+  wikiName: text("wiki_name"),
   lastRunAt: text("last_run_at"),
   lastSuccessAt: text("last_success_at"),
   lastStatus: text("last_status"),

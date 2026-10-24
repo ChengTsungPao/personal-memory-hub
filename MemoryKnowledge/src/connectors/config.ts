@@ -1,29 +1,31 @@
 /**
  * Connector settings, resolved from env (same pattern as `resolveAutoSyncConfig`).
  *
- * Two layers of opt-in:
- *   1. Operator gate — KNOWLEDGE_CONNECTORS_ENABLED (default false). When off, the
- *      scheduler never starts, no connector code runs and no outbound request is made.
- *   2. Per-connector runtime switch — persisted in SQLite (default off), flipped through
- *      `POST /connectors/set-enabled` (service-key protected) or the MCP tool.
+ * Opt-in by default:
+ *   - Each connector's runtime switch (`enabled`) in SQLite defaults to `false`, so no
+ *     connector code runs and no outbound request is made until the user enables it in
+ *     MemoryPanel (or via MCP / API).
+ *   - Operators can hard-disable the entire connector subsystem via
+ *     `KNOWLEDGE_CONNECTORS_ENABLED=false`.
  *
- * Secrets (tokens) are env-only on purpose: they must never travel through the MCP/API
- * surface, where they would be echoed into agent transcripts.
+ * Credentials (tokens) can be configured either via `.env` (`KNOWLEDGE_CONNECTOR_NOTION_TOKEN`)
+ * or saved through the MemoryPanel UI (`POST /connectors/configure`, stored in SQLite).
+ * Tokens are never returned by `/connectors/status` and never exposed to MCP tools.
  */
 
 export interface NotionConnectorConfig {
-  /** Notion internal-integration token (ntn_...). Env-only. */
+  /** Fallback Notion internal-integration token (ntn_...) from env. */
   token: string;
-  /** Wiki (by name) the Notion pages are written into; created on first sync. */
+  /** Default Wiki (by name) the Notion pages are written into; created on first sync. */
   wikiName: string;
 }
 
 export interface ConnectorsConfig {
-  /** Operator gate; false = the whole feature is inert. */
+  /** Operator gate; false = the whole feature is inert. Default true so UI setup works out of the box. */
   enabled: boolean;
   /** Hours between scheduled syncs. 0 = scheduler off, manual trigger only. */
   intervalHours: number;
-  /** Tenant the target wikis live under. */
+  /** Default tenant the target wikis live under (overridable per connector via UI/API). */
   serviceId: string;
   teamId: string;
   notion: NotionConnectorConfig;
@@ -33,7 +35,7 @@ export const DEFAULT_INTERVAL_HOURS = 168; // weekly
 const MAX_INTERVAL_HOURS = 24 * 90;
 
 function parseBoolean(raw: string | undefined, fallback: boolean): boolean {
-  if (raw === undefined || raw === "") return fallback;
+  if (raw === undefined || raw.trim() === "") return fallback;
   return ["1", "true", "yes", "on"].includes(raw.trim().toLowerCase());
 }
 
@@ -48,7 +50,7 @@ export function resolveConnectorsConfig(
   env: Record<string, string | undefined> = process.env,
 ): ConnectorsConfig {
   return {
-    enabled: parseBoolean(env.KNOWLEDGE_CONNECTORS_ENABLED, false),
+    enabled: parseBoolean(env.KNOWLEDGE_CONNECTORS_ENABLED, true),
     intervalHours: parseIntervalHours(env.KNOWLEDGE_CONNECTORS_INTERVAL_HOURS),
     serviceId: (env.KNOWLEDGE_CONNECTORS_SERVICE_ID ?? "").trim(),
     teamId: (env.KNOWLEDGE_CONNECTORS_TEAM_ID ?? "").trim(),

@@ -31,6 +31,8 @@ import type {
   CodeGraphSyncResult,
   CodeGraphToolResult,
   ConnectorStatusItem,
+  ConnectorConfigurePayload,
+  ConnectorConfigureResult,
 } from '../ports/knowledge-client-port.js';
 
 export interface KnowledgeClientConfig {
@@ -191,6 +193,10 @@ export class HttpKnowledgeClient implements KnowledgeClientPort {
 
   async connectorsStatus(): Promise<{ connectors: ConnectorStatusItem[] }> {
     return this.post('/v3/connectors/status', {});
+  }
+
+  async connectorConfigure(connectorId: string, payload: ConnectorConfigurePayload): Promise<ConnectorConfigureResult> {
+    return this.post('/v3/connectors/configure', { connector_id: connectorId, ...payload });
   }
 
   async connectorSetEnabled(connectorId: string, enabled: boolean, teamId?: string): Promise<{ connector_id: string; enabled: boolean }> {

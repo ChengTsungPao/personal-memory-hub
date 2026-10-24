@@ -73,7 +73,7 @@ export interface KnowledgeModule {
   autoSyncScheduler: AutoSyncScheduler;
   /** 定时自动同步的解析后配置（挂载 admin 路由时透出）。 */
   autoSyncConfig: AutoSyncConfig;
-  /** Opt-in external-source sync (Notion, ...); inert unless KNOWLEDGE_CONNECTORS_ENABLED. */
+  /** Opt-in external-source sync (Notion, ...); inert unless enabled per connector. */
   connectorService: ConnectorSyncService;
   connectorScheduler: ConnectorScheduler;
 }
@@ -303,11 +303,16 @@ export function createKnowledgeModule(config: KnowledgeModuleConfig): KnowledgeM
 
   // ── Connectors: opt-in periodic import of external knowledge (Notion, ...) into a wiki ──
   const connectorsConfig = resolveConnectorsConfig();
+  const connectorStore = createConnectorStore(db);
   const connectorService = new ConnectorSyncService({
     config: connectorsConfig,
-    store: createConnectorStore(db),
+    store: connectorStore,
     wikiService,
-    connectors: [new NotionConnector({ token: connectorsConfig.notion.token })],
+    connectors: [
+      new NotionConnector({
+        token: () => connectorStore.get("notion").token || connectorsConfig.notion.token,
+      }),
+    ],
     wikiNames: { notion: connectorsConfig.notion.wikiName },
   });
   const connectorScheduler = new ConnectorScheduler({ service: connectorService, config: connectorsConfig });

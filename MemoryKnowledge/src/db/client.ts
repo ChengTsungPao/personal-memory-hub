@@ -156,6 +156,8 @@ export function migrate(_db: Db, raw: Database.Database): void {
       enabled         INTEGER NOT NULL DEFAULT 0,
       service_id      TEXT,
       team_id         TEXT,
+      token           TEXT,
+      wiki_name       TEXT,
       last_run_at     TEXT,
       last_success_at TEXT,
       last_status     TEXT,
@@ -177,6 +179,8 @@ export function migrate(_db: Db, raw: Database.Database): void {
   addColumnIfMissing(raw, "knowledge_code_graph_audit", "service_id", "TEXT");
   addColumnIfMissing(raw, "knowledge_connector", "service_id", "TEXT");
   addColumnIfMissing(raw, "knowledge_connector", "team_id", "TEXT");
+  addColumnIfMissing(raw, "knowledge_connector", "token", "TEXT");
+  addColumnIfMissing(raw, "knowledge_connector", "wiki_name", "TEXT");
 }
 
 /** Add a column to a table if it doesn't already exist. SQLite-safe. */
