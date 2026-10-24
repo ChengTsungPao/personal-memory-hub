@@ -102,9 +102,30 @@ function saveRegistry(registry) {
 }
 
 /**
+ * Remove an agent_id from the local registry file (called when an agent is deleted).
+ */
+export function pruneAgentFromRegistry(agentId) {
+  const registry = loadRegistry();
+  let changed = false;
+  for (const [key, val] of Object.entries(registry)) {
+    if (val === agentId) {
+      delete registry[key];
+      changed = true;
+    }
+  }
+  if (changed) {
+    saveRegistry(registry);
+  }
+  return changed;
+}
+
+/**
  * Resolve a project key to a real MemoryCore agent_id, registering a new
  * agent (which auto-provisions its chat_memory asset) the first time this
  * project key is seen. Cached in `~/.personal-memory-hub/agents.json` after that.
+ *
+ * If a cached agent has been archived or deleted on the server, the stale cache
+ * is pruned and a new agent is transparently minted (auto-healing).
  *
  * MemoryCore's HTTP API needs the admin `x-tdai-user-key` (not the plain
  * `Bearer local` the hooks otherwise use) to call `/v3/meta/agent/create` —
@@ -114,7 +135,44 @@ function saveRegistry(registry) {
  */
 async function resolveAgentId(cfg, projectKey, projectName) {
   const registry = loadRegistry();
-  if (registry[projectKey]) return registry[projectKey];
+  const cachedId = registry[projectKey];
+
+  if (cachedId) {
+    // Validate that the cached agent still exists and is active in MemoryCore
+    if (cfg.adminKey) {
+      try {
+        const checkRes = await fetch(`${cfg.endpoint}/v3/meta/agent/get`, {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "x-tdai-service-id": cfg.serviceId,
+            "x-tdai-user-key": cfg.adminKey,
+          },
+          body: JSON.stringify({ agent_id: cachedId }),
+          signal: AbortSignal.timeout(Math.min(cfg.timeoutMs, 3000)),
+        });
+        const checkPayload = await checkRes.json().catch(() => ({}));
+        if (checkRes.ok && checkPayload.code === 0 && checkPayload.data) {
+          if (checkPayload.data.status === "active") {
+            return cachedId;
+          }
+        } else if (checkPayload.code === 404 || checkRes.status === 404) {
+          // Explicitly deleted on server
+        } else {
+          // Transient error or other status: keep cached to be safe
+          return cachedId;
+        }
+      } catch {
+        // Core offline or timed out: degrade gracefully with cachedId
+        return cachedId;
+      }
+      // Agent was archived or deleted: prune stale cache and fall through to re-create
+      delete registry[projectKey];
+      saveRegistry(registry);
+    } else {
+      return cachedId;
+    }
+  }
 
   if (!cfg.adminKey) return null;
 
