@@ -234,3 +234,4 @@ Built on [TencentDB Agent Memory](https://github.com/TencentCloud/TencentDB-Agen
 
 - **Claude Code**
 - **Antigravity**
+- **Codex**
