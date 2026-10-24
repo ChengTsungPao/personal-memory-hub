@@ -128,112 +128,123 @@ export function ConnectorsModal({ visible, activeTeamId, onClose, onSynced }: Co
             const draftToken = tokenDrafts[item.id] ?? '';
             const draftWikiName = wikiNameDrafts[item.id] ?? item.wiki_name;
             return (
-              <div
-                key={item.id}
-                style={{
-                  border: '1px solid var(--tea-color-border, #e5e7eb)',
-                  borderRadius: 8,
-                  padding: 16,
-                  marginBottom: 12,
-                }}
-              >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <Text reset style={{ fontWeight: 600, fontSize: 15, textTransform: 'capitalize' }}>
-                      {item.id}
-                    </Text>
-                    <Tag theme={item.has_token ? 'success' : 'warning'}>
-                      {item.has_token ? 'Token 已設定' : '尚未設定 Token'}
-                    </Tag>
-                    <Tag theme={item.enabled ? 'primary' : 'default'}>
-                      {item.enabled ? '自動/手動同步開啟' : '已停用'}
-                    </Tag>
-                    {item.running && <Tag theme="warning">同步中...</Tag>}
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                    <Switch
-                      value={item.enabled}
-                      disabled={!item.available || isBusy}
-                      onChange={(val) => handleToggle(item, val)}
-                    >
-                      啟用同步
-                    </Switch>
-                    <Button
-                      type="primary"
-                      disabled={!item.available || !item.enabled || !item.has_token || isBusy}
-                      loading={item.running}
-                      onClick={() => handleTrigger(item)}
-                    >
-                      立即同步
-                    </Button>
-                  </div>
+              <div key={item.id} style={{ marginBottom: 16 }}>
+                <div style={{ marginBottom: 6, paddingLeft: 2, textAlign: 'left' }}>
+                  <Text reset style={{ fontWeight: 600, fontSize: 15, textTransform: 'capitalize' }}>
+                    {item.id}
+                  </Text>
                 </div>
-
-                <Form>
-                  <Form.Item
-                    label="Integration Token"
-                    message="於 Notion 建立 Internal Integration 取得 ntn_... Token，並在欲同步的頂層頁面點選「⋯ → Connect to」授權該 Integration。"
+                <div
+                  style={{
+                    border: '1px solid var(--tea-color-border, #e5e7eb)',
+                    borderRadius: 8,
+                    padding: 16,
+                  }}
+                >
+                  <div
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      flexWrap: 'wrap',
+                      gap: 8,
+                      marginBottom: 12,
+                    }}
                   >
-                    <Input
-                      type="password"
-                      size="full"
-                      disabled={!item.available || isBusy}
-                      value={draftToken}
-                      placeholder={
-                        item.has_token
-                          ? '已設定 Token（留空則保留原值，輸入新值可覆蓋）'
-                          : '貼上 Notion Integration Secret (ntn_...)'
-                      }
-                      onChange={(val) => setTokenDrafts((prev) => ({ ...prev, [item.id]: val }))}
-                    />
-                  </Form.Item>
-                  <Form.Item label="目標 Wiki 名稱">
-                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                      <Input
-                        size="m"
+                    <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
+                      <Tag theme={item.has_token ? 'success' : 'warning'}>
+                        {item.has_token ? 'Token 已設定' : '尚未設定 Token'}
+                      </Tag>
+                      <Tag theme={item.enabled ? 'primary' : 'default'}>
+                        {item.enabled ? '同步已開啟' : '已停用'}
+                      </Tag>
+                      {item.running && <Tag theme="warning">同步中...</Tag>}
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                      <Switch
+                        value={item.enabled}
                         disabled={!item.available || isBusy}
-                        value={draftWikiName}
-                        placeholder="Notion"
-                        onChange={(val) => setWikiNameDrafts((prev) => ({ ...prev, [item.id]: val }))}
-                      />
-                      <Button
-                        type="weak"
-                        disabled={!item.available || isBusy}
-                        onClick={() => handleSaveConfig(item)}
+                        onChange={(val) => handleToggle(item, val)}
                       >
-                        儲存設定
+                        啟用同步
+                      </Switch>
+                      <Button
+                        type="primary"
+                        disabled={!item.available || !item.enabled || !item.has_token || isBusy}
+                        loading={item.running}
+                        onClick={() => handleTrigger(item)}
+                      >
+                        立即同步
                       </Button>
                     </div>
-                  </Form.Item>
-                </Form>
-
-                <Form layout="inline" style={{ marginTop: 8 }}>
-                  <Form.Item label="排程週期">
-                    <Text>{item.interval_hours > 0 ? `每 ${item.interval_hours} 小時` : '僅手動觸發'}</Text>
-                  </Form.Item>
-                  <Form.Item label="已追蹤頁面">
-                    <Text>{item.tracked_docs} 頁</Text>
-                  </Form.Item>
-                  <Form.Item label="上次同步">
-                    <Text>{formatShortTime(item.last_success_at || item.last_run_at)}</Text>
-                  </Form.Item>
-                </Form>
-
-                {stats && (
-                  <div style={{ marginTop: 8 }}>
-                    <Text theme="label">
-                      上次結果：新增 +{stats.added} / 更新 ~{stats.updated} / 刪除 -{stats.deleted}
-                      {stats.failed > 0 ? ` / 失敗 ${stats.failed}` : ''}
-                      {stats.ingestTriggered ? '（已觸發 Wiki Ingest）' : '（無變更，未消耗 LLM Token）'}
-                    </Text>
                   </div>
-                )}
 
-                {item.last_error && (
-                  <Alert type="error" style={{ marginTop: 8 }}>
-                    {item.last_error}
-                  </Alert>
-                )}
+                  <Form>
+                    <Form.Item
+                      label="Integration Token"
+                      message="於 Notion 建立 Internal Integration 取得 ntn_... Token，並在欲同步的頂層頁面點選「⋯ → Connect to」授權該 Integration。"
+                    >
+                      <Input
+                        type="password"
+                        size="full"
+                        disabled={!item.available || isBusy}
+                        value={draftToken}
+                        placeholder={
+                          item.has_token
+                            ? '已設定 Token（留空則保留原值，輸入新值可覆蓋）'
+                            : '貼上 Notion Integration Secret (ntn_...)'
+                        }
+                        onChange={(val) => setTokenDrafts((prev) => ({ ...prev, [item.id]: val }))}
+                      />
+                    </Form.Item>
+                    <Form.Item label="目標 Wiki 名稱">
+                      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                        <Input
+                          size="m"
+                          disabled={!item.available || isBusy}
+                          value={draftWikiName}
+                          placeholder="Notion"
+                          onChange={(val) => setWikiNameDrafts((prev) => ({ ...prev, [item.id]: val }))}
+                        />
+                        <Button
+                          type="weak"
+                          disabled={!item.available || isBusy}
+                          onClick={() => handleSaveConfig(item)}
+                        >
+                          儲存設定
+                        </Button>
+                      </div>
+                    </Form.Item>
+                  </Form>
+
+                  <Form layout="inline" style={{ marginTop: 8 }}>
+                    <Form.Item label="排程週期">
+                      <Text>{item.interval_hours > 0 ? `每 ${item.interval_hours} 小時` : '僅手動觸發'}</Text>
+                    </Form.Item>
+                    <Form.Item label="已追蹤頁面">
+                      <Text>{item.tracked_docs} 頁</Text>
+                    </Form.Item>
+                    <Form.Item label="上次同步">
+                      <Text>{formatShortTime(item.last_success_at || item.last_run_at)}</Text>
+                    </Form.Item>
+                  </Form>
+
+                  {stats && (
+                    <div style={{ marginTop: 8 }}>
+                      <Text theme="label">
+                        上次結果：新增 +{stats.added} / 更新 ~{stats.updated} / 刪除 -{stats.deleted}
+                        {stats.failed > 0 ? ` / 失敗 ${stats.failed}` : ''}
+                        {stats.ingestTriggered ? '（已觸發 Wiki Ingest）' : '（無變更，未消耗 LLM Token）'}
+                      </Text>
+                    </div>
+                  )}
+
+                  {item.last_error && (
+                    <Alert type="error" style={{ marginTop: 8 }}>
+                      {item.last_error}
+                    </Alert>
+                  )}
+                </div>
               </div>
             );
           })
