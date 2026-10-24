@@ -16,7 +16,7 @@ export function useWikiSources() {
   const [sources, setSources] = useState<WikiDetail[]>([]);
   const [loading, setLoading] = useState(false);
   // 默认展示 Agent 资产（fixed），避免用户误以为自己的资产在「团队资产」里
-  const [scopeTab, setScopeTab] = useState<WikiScopeTab>('fixed');
+  const [scopeTab, setScopeTab] = useState<WikiScopeTab>('team');
   const [keyword, setKeyword] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [viewMode, setViewMode] = useState<ViewMode>('card');
