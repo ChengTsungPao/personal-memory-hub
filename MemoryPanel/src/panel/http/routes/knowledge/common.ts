@@ -356,6 +356,32 @@ export async function requireKnowledgeRead(
     return { userId, asset };
   }
 
+  // KS 侧直接创建的 Wiki（例如 Notion 等外部 Connector 同步自动创建的 Wiki）尚未在 meta_asset 登记时，
+  // 校验 caller 是否属于该 Wiki 所在 team，通过后自动在 meta_asset 幂等补登并放行读写。
+  if (knowledgeId.startsWith('wiki-')) {
+    try {
+      const kc = deps.knowledgeClientFactory(ctx.instanceId);
+      const detail = await kc.wikiGet(knowledgeId);
+      if (detail && detail.team_id) {
+        const member = await isTeamMember(deps, ctx, detail.team_id, userId);
+        if (!member) return { error: respondControlError(c, 403, 'NOT_TEAM_MEMBER') };
+        await ensureKnowledgeAsset(deps, ctx, {
+          assetId: detail.wiki_id,
+          teamId: detail.team_id,
+          assetType: ASSET_TYPE_WIKI,
+          name: detail.name,
+          ownerUserId: detail.owner_user_id || userId,
+          serviceUrl: detail.service_url,
+        });
+        const retryEnv = await deps.metaKernel.invoke('asset/get', { asset_id: knowledgeId }, ctx);
+        const asset = retryEnv.code === 0 && retryEnv.data ? (retryEnv.data as KnowledgeAssetMetaRaw) : undefined;
+        return { userId, asset };
+      }
+    } catch {
+      /* fall through */
+    }
+  }
+
   if (opts?.allowInFlightCodeOwner && (action === 'read' || action === 'write')) {
     try {
       const kc = deps.knowledgeClientFactory(ctx.instanceId);
