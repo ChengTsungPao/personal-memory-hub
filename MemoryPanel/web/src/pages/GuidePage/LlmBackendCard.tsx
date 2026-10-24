@@ -7,6 +7,7 @@
  * 沒裝這個選配元件）整張卡片會顯示「無法連線」，不影響頁面其他部分。
  */
 import { useCallback, useEffect, useState } from 'react';
+import './style.css';
 
 type BackendMode = 'gateway' | 'openrouter' | 'proxy' | 'unknown';
 

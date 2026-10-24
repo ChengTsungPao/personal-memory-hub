@@ -26,7 +26,7 @@ export const enUS = {
   'menu.desc.api_keys': 'Manage your API keys for external clients',
 
   // ===== GlobalHeader =====
-  'header.guide': 'Models & Guide',
+  'header.guide': 'Guide',
   'header.sync': 'Live Sync',
   'header.sync.title': 'Real-time sync is connected',
   'header.settings': 'Settings',
@@ -118,7 +118,10 @@ export const enUS = {
     'Login response is missing user info (data.user is null). Please contact backend to verify the auth/verify contract.',
 
   // ===== SettingsDialog =====
-  'settings.caption': 'Settings · Permissions',
+  'settings.caption': 'System Settings',
+  'settings.modelSettings.title': 'Model Settings (LLM Backend)',
+  'settings.modelSettings.desc': 'Switch LLM Gateway / OpenRouter / Claude LLM Proxy, configure extraction models',
+  'settings.modelSettings.btn': 'Adjust Models',
   'settings.title': 'Resource Module Toggles',
   'settings.desc':
     'Toggles are saved for the current user. When disabled, the proxy will not inject the corresponding capability for that user. Changes take effect immediately for new sessions.',

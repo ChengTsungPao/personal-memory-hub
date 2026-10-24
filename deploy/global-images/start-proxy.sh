@@ -79,7 +79,7 @@ cat > "$CONFIG_FILE" <<YAML
 server:
   host: 0.0.0.0
   port: 8096
-  forwardTimeoutMs: 600000
+  forwardTimeoutMs: ${PROXY_FORWARD_TIMEOUT_MS:-1800000}
 
 upstream:
   url: "${PROXY_UPSTREAM_URL}"

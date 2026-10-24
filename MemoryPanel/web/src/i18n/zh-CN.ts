@@ -26,7 +26,7 @@ export const zhCN = {
   'menu.desc.api_keys': '管理你的 API Key，用於外部客戶端接入',
 
   // ===== GlobalHeader =====
-  'header.guide': '模型調整 / 使用說明',
+  'header.guide': '使用說明',
   'header.sync': '實時同步',
   'header.sync.title': '實時同步已連線',
   'header.settings': '設定',
@@ -114,7 +114,10 @@ export const zhCN = {
   'login.error.noUser': '登入響應缺少使用者資訊（data.user 為空），請聯絡後端確認 auth/verify 契約。',
 
   // ===== SettingsDialog =====
-  'settings.caption': '設定 · 許可權管理',
+  'settings.caption': '系統設定',
+  'settings.modelSettings.title': '模型調整 (LLM Backend)',
+  'settings.modelSettings.desc': '切換 LLM Gateway / OpenRouter / Claude LLM Proxy，配置模型抽取參數',
+  'settings.modelSettings.btn': '前往調整',
   'settings.title': '資源管理模組開關',
   'settings.desc':
     '開關按當前登入使用者儲存。關閉後，proxy 不會為該使用者注入對應原子能力；變更對新會話即時生效。',
