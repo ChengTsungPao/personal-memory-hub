@@ -123,29 +123,6 @@
   color: var(--tea-color-text-primary);
 }
 
-/* ===== 使用说明按钮 ===== */
-._memory-global-header-guide-btn {
-  padding: 4px 10px;
-  border: none;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--tea-color-text-secondary);
-  font-size: 13px;
-  cursor: pointer;
-  transition: background-color 0.15s, color 0.15s;
-  white-space: nowrap;
-}
-
-._memory-global-header-guide-btn:hover {
-  background: var(--tea-color-bg-secondary-hover);
-  color: var(--tea-color-text-primary);
-}
-
-._memory-global-header-guide-btn.is-active {
-  background: var(--tea-color-bg-brand-lighten-default);
-  color: var(--tea-color-text-brand-default);
-  font-weight: 500;
-}
 
 /* ===== Profile Modal：tea Avatar + Justify + 描述型分块 ===== */
 
@@ -240,14 +217,6 @@
     display: none;
   }
 
-  ._memory-global-header-guide-btn {
-    display: inline-flex;
-    align-items: center;
-    padding: 3px 8px;
-    font-size: 12px;
-    border: 1px solid var(--tea-color-border-primary-default);
-    background: var(--tea-color-bg-secondary-default);
-  }
 
   ._memory-global-header-sync {
     display: none;
