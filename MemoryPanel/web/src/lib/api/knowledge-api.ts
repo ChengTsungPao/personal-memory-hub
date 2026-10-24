@@ -86,6 +86,31 @@ export interface WikiDetail {
   updated_at: string;
 }
 
+export interface ConnectorSyncStats {
+  added: number;
+  updated: number;
+  deleted: number;
+  failed: number;
+  ingestTriggered: boolean;
+}
+
+export interface ConnectorStatusItem {
+  id: string;
+  available: boolean;
+  configured: boolean;
+  enabled: boolean;
+  running: boolean;
+  interval_hours: number;
+  wiki_name: string;
+  team_id: string | null;
+  last_run_at: string | null;
+  last_success_at: string | null;
+  last_status: 'running' | 'ok' | 'error' | null;
+  last_error: string | null;
+  last_stats: ConnectorSyncStats | null;
+  tracked_docs: number;
+}
+
 export interface CodeGraphDetail {
   code_graph_id: string;
   team_id: string;
@@ -487,6 +512,12 @@ export const knowledgeApi = {
   connectors: {
     pull: (name: string, params: Record<string, unknown>): Promise<void> =>
       panelPost('/connectors/pull', { name, ...params }),
+    status: (): Promise<{ connectors: ConnectorStatusItem[] }> =>
+      panelPost('/connectors/status', {}),
+    setEnabled: (connectorId: string, enabled: boolean, teamId?: string): Promise<{ connector_id: string; enabled: boolean }> =>
+      panelPost('/connectors/set-enabled', { connector_id: connectorId, enabled, ...(teamId ? { team_id: teamId } : {}) }),
+    trigger: (connectorId: string, teamId?: string): Promise<{ connector_id: string; triggered: boolean }> =>
+      panelPost('/connectors/trigger', { connector_id: connectorId, ...(teamId ? { team_id: teamId } : {}) }),
   },
 };
 

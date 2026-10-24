@@ -154,6 +154,8 @@ export function migrate(_db: Db, raw: Database.Database): void {
     CREATE TABLE IF NOT EXISTS knowledge_connector (
       connector_id    TEXT PRIMARY KEY,
       enabled         INTEGER NOT NULL DEFAULT 0,
+      service_id      TEXT,
+      team_id         TEXT,
       last_run_at     TEXT,
       last_success_at TEXT,
       last_status     TEXT,
@@ -173,6 +175,8 @@ export function migrate(_db: Db, raw: Database.Database): void {
   // service_id on audit tables is nullable → safe to add to existing dev DBs.
   addColumnIfMissing(raw, "knowledge_wiki_audit", "service_id", "TEXT");
   addColumnIfMissing(raw, "knowledge_code_graph_audit", "service_id", "TEXT");
+  addColumnIfMissing(raw, "knowledge_connector", "service_id", "TEXT");
+  addColumnIfMissing(raw, "knowledge_connector", "team_id", "TEXT");
 }
 
 /** Add a column to a table if it doesn't already exist. SQLite-safe. */

@@ -37,6 +37,8 @@ function createInMemoryConnectorStore(): IConnectorStore {
       s = {
         connector_id: id,
         enabled: false,
+        service_id: null,
+        team_id: null,
         last_run_at: null,
         last_success_at: null,
         last_status: null,
@@ -54,10 +56,18 @@ function createInMemoryConnectorStore(): IConnectorStore {
       const s = ensure(id);
       return { ...s, manifest: { ...s.manifest } };
     },
-    setEnabled(id, enabled) {
+    setEnabled(id, enabled, opts) {
       const s = ensure(id);
       s.enabled = enabled;
+      if (opts?.serviceId) s.service_id = opts.serviceId;
+      if (opts?.teamId) s.team_id = opts.teamId;
       s.updated_at = new Date().toISOString();
+      return this.get(id);
+    },
+    setTarget(id, opts) {
+      const s = ensure(id);
+      if (opts.serviceId) s.service_id = opts.serviceId;
+      if (opts.teamId) s.team_id = opts.teamId;
       return this.get(id);
     },
     markRunning(id) {

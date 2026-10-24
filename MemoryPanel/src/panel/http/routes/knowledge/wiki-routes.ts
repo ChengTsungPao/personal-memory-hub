@@ -285,4 +285,40 @@ export function registerKnowledgeWikiRoutes(api: Hono, deps: PanelDeps): void {
     const kc = deps.knowledgeClientFactory(ctx.instanceId);
     return runKs(c, () => kc.wikiRawWrite(teamId, wikiId, files, gate.userId));
   });
+
+  // Connectors — external knowledge source sync (Notion, ...)
+  api.post('/knowledge/connectors/status', mw, async (c) => {
+    const ctx = buildCtx(c);
+    const kc = deps.knowledgeClientFactory(ctx.instanceId);
+    return runKs(c, () => kc.connectorsStatus());
+  });
+
+  api.post('/knowledge/connectors/set-enabled', mw, async (c) => {
+    const ctx = buildCtx(c);
+    const body = await readJson(c);
+    const connectorId = str(body, 'connector_id');
+    if (!connectorId) return respondControlError(c, 400, 'MISSING_CONNECTOR_ID');
+    if (typeof body.enabled !== 'boolean') return respondControlError(c, 400, 'MISSING_ENABLED');
+    const teamId = str(body, 'team_id') ?? undefined;
+    if (teamId) {
+      const gate = await requireTeamMember(deps, c, ctx, teamId);
+      if ('error' in gate) return gate.error;
+    }
+    const kc = deps.knowledgeClientFactory(ctx.instanceId);
+    return runKs(c, () => kc.connectorSetEnabled(connectorId, body.enabled as boolean, teamId));
+  });
+
+  api.post('/knowledge/connectors/trigger', mw, async (c) => {
+    const ctx = buildCtx(c);
+    const body = await readJson(c);
+    const connectorId = str(body, 'connector_id');
+    if (!connectorId) return respondControlError(c, 400, 'MISSING_CONNECTOR_ID');
+    const teamId = str(body, 'team_id') ?? undefined;
+    if (teamId) {
+      const gate = await requireTeamMember(deps, c, ctx, teamId);
+      if ('error' in gate) return gate.error;
+    }
+    const kc = deps.knowledgeClientFactory(ctx.instanceId);
+    return runKs(c, () => kc.connectorTrigger(connectorId, teamId));
+  });
 }

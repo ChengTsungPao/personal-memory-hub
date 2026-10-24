@@ -1,5 +1,5 @@
 /**
- * ConnectorStore — persisted per-connector state (runtime switch, last run, manifest).
+ * ConnectorStore — persisted per-connector state (runtime switch, tenant binding, last run, manifest).
  *
  * Decoupled from IKnowledgeStore, same shape as `createLlmBindingStore`: one small table
  * keyed by connector id. A connector with no row is simply "disabled, never run".
@@ -22,6 +22,8 @@ export type Manifest = Record<string, ManifestEntry>;
 export interface ConnectorState {
   connector_id: string;
   enabled: boolean;
+  service_id: string | null;
+  team_id: string | null;
   last_run_at: string | null;
   last_success_at: string | null;
   last_status: ConnectorRunStatus | null;
@@ -41,9 +43,15 @@ export interface RunResult {
   success?: boolean;
 }
 
+export interface SetEnabledOpts {
+  serviceId?: string;
+  teamId?: string;
+}
+
 export interface IConnectorStore {
   get(connectorId: string): ConnectorState;
-  setEnabled(connectorId: string, enabled: boolean): ConnectorState;
+  setEnabled(connectorId: string, enabled: boolean, opts?: SetEnabledOpts): ConnectorState;
+  setTarget(connectorId: string, opts: SetEnabledOpts): ConnectorState;
   /** Mark a run as started (status=running). */
   markRunning(connectorId: string): void;
   /** Record the outcome of a run. */
@@ -54,6 +62,8 @@ function emptyState(connectorId: string): ConnectorState {
   return {
     connector_id: connectorId,
     enabled: false,
+    service_id: null,
+    team_id: null,
     last_run_at: null,
     last_success_at: null,
     last_status: null,
@@ -79,6 +89,8 @@ function toState(row: Row): ConnectorState {
   return {
     connector_id: row.connectorId,
     enabled: row.enabled === 1,
+    service_id: row.serviceId ?? null,
+    team_id: row.teamId ?? null,
     last_run_at: row.lastRunAt,
     last_success_at: row.lastSuccessAt,
     last_status: (row.lastStatus as ConnectorRunStatus | null) ?? null,
@@ -112,8 +124,19 @@ export function createConnectorStore(db: Db): IConnectorStore {
       return row ? toState(row) : emptyState(connectorId);
     },
 
-    setEnabled(connectorId, enabled) {
-      return patch(connectorId, { enabled: enabled ? 1 : 0 });
+    setEnabled(connectorId, enabled, opts) {
+      return patch(connectorId, {
+        enabled: enabled ? 1 : 0,
+        ...(opts?.serviceId ? { serviceId: opts.serviceId } : {}),
+        ...(opts?.teamId ? { teamId: opts.teamId } : {}),
+      });
+    },
+
+    setTarget(connectorId, opts) {
+      return patch(connectorId, {
+        ...(opts.serviceId ? { serviceId: opts.serviceId } : {}),
+        ...(opts.teamId ? { teamId: opts.teamId } : {}),
+      });
     },
 
     markRunning(connectorId) {

@@ -10,7 +10,7 @@
 import { createLogger } from "../logger.js";
 import type { WikiService } from "../store/index.js";
 import type { ConnectorsConfig } from "./config.js";
-import type { IConnectorStore, Manifest, ConnectorState } from "./store.js";
+import type { IConnectorStore, Manifest, ConnectorState, SetEnabledOpts } from "./store.js";
 import type { ConnectorDocRef, ConnectorSyncStats, IKnowledgeConnector } from "./types.js";
 
 const log = createLogger("connector-sync");
@@ -32,6 +32,8 @@ export interface ConnectorStatusView {
   enabled: boolean;
   running: boolean;
   interval_hours: number;
+  wiki_name: string;
+  team_id: string | null;
   last_run_at: string | null;
   last_success_at: string | null;
   last_status: ConnectorState["last_status"];
@@ -78,6 +80,7 @@ export class ConnectorSyncService {
 
   private view(c: IKnowledgeConnector): ConnectorStatusView {
     const s = this.store.get(c.id);
+    const { teamId } = this.resolveTarget(c.id);
     return {
       id: c.id,
       available: this.config.enabled,
@@ -85,6 +88,8 @@ export class ConnectorSyncService {
       enabled: s.enabled,
       running: this.running.has(c.id),
       interval_hours: this.config.intervalHours,
+      wiki_name: this.wikiNames[c.id] ?? c.id,
+      team_id: teamId || null,
       last_run_at: s.last_run_at,
       last_success_at: s.last_success_at,
       last_status: s.last_status,
@@ -94,24 +99,36 @@ export class ConnectorSyncService {
     };
   }
 
+  private resolveTarget(connectorId: string): { serviceId: string; teamId: string } {
+    const s = this.store.get(connectorId);
+    return {
+      serviceId: s.service_id || this.config.serviceId,
+      teamId: s.team_id || this.config.teamId,
+    };
+  }
+
   private isConfigured(c: IKnowledgeConnector): boolean {
-    return c.isConfigured() && this.config.serviceId !== "" && this.config.teamId !== "";
+    const { serviceId, teamId } = this.resolveTarget(c.id);
+    return c.isConfigured() && serviceId !== "" && teamId !== "";
   }
 
   // ── control side ──
 
-  setEnabled(connectorId: string, enabled: boolean): ActionResult {
+  setEnabled(connectorId: string, enabled: boolean, opts?: SetEnabledOpts): ActionResult {
     if (!this.connectors.has(connectorId)) return { ok: false, reason: `unknown connector: ${connectorId}` };
     if (!this.config.enabled) {
       return { ok: false, reason: "connectors are disabled by the operator (KNOWLEDGE_CONNECTORS_ENABLED)" };
     }
-    this.store.setEnabled(connectorId, enabled);
+    this.store.setEnabled(connectorId, enabled, opts);
     log.info(`connector ${connectorId} ${enabled ? "enabled" : "disabled"}`);
     return { ok: true };
   }
 
   /** Validate and start a run in the background (fire-and-forget). */
-  trigger(connectorId: string): ActionResult {
+  trigger(connectorId: string, opts?: SetEnabledOpts): ActionResult {
+    if (opts?.serviceId || opts?.teamId) {
+      this.store.setTarget(connectorId, opts);
+    }
     const reason = this.blockedReason(connectorId);
     if (reason) return { ok: false, reason };
     void this.runOnce(connectorId).catch((err) => log.error(`connector ${connectorId} run crashed: ${String(err)}`));
@@ -178,7 +195,7 @@ export class ConnectorSyncService {
   }
 
   private async sync(connector: IKnowledgeConnector): Promise<void> {
-    const { serviceId, teamId } = this.config;
+    const { serviceId, teamId } = this.resolveTarget(connector.id);
     const prev = this.store.get(connector.id);
     const stats: ConnectorSyncStats = { added: 0, updated: 0, deleted: 0, failed: 0, ingestTriggered: false };
 

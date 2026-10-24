@@ -3,6 +3,7 @@
  * 列表视图渲染与组件组装；状态/数据逻辑在 useWikiSources，详情在 WikiDetailView，
  * 展示小组件 / 常量工具 / 共享 Markdown 分别独立收口。
  */
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button, Card, Form, Input, Justify, MetricsBoard, Modal, SearchBox, Segment, Select, StatusTip, Table, Text } from 'tea-component';
 import { BooksIcon, ChevronRightIcon, UsergroupIcon, ViewListIcon, ViewModuleIcon } from 'tea-icons-react';
@@ -15,6 +16,7 @@ import { WikiOwnerLabel, WikiStatusBadge } from './wiki-ui';
 import { WikiActions } from './wiki-detail-components';
 import { useWikiSources } from '../hooks/useWikiSources';
 import { WikiDetailView } from './wiki-detail-view';
+import { ConnectorsModal } from './ConnectorsModal';
 import '@/components/asset/asset-card.css';
 import '../styles/wiki-sources-panel.css';
 
@@ -22,6 +24,7 @@ const { scrollable } = Table.addons;
 
 export default function WikiSourcesPanel() {
   const { t } = useTranslation();
+  const [showConnectors, setShowConnectors] = useState(false);
   const wiki = useWikiSources();
 
   const {
@@ -113,9 +116,14 @@ export default function WikiSourcesPanel() {
           // 创建（新增团队池资产）与 memory/skill 对齐，放右上角 header；
           // 仅「团队资产」tab 开放，固定资产 tab 只做绑定/查看。
           scopeTab !== 'fixed' ? (
-            <Button type="primary" onClick={() => setShowCreate(true)} data-guide="create-wiki">
-              {t('wiki.create')}
-            </Button>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <Button onClick={() => setShowConnectors(true)} data-guide="wiki-connectors">
+                外部知識源同步 (Notion)
+              </Button>
+              <Button type="primary" onClick={() => setShowCreate(true)} data-guide="create-wiki">
+                {t('wiki.create')}
+              </Button>
+            </div>
           ) : undefined
         }
       />
@@ -316,6 +324,13 @@ export default function WikiSourcesPanel() {
           )}
         </Card.Body>
       </Card>
+
+      <ConnectorsModal
+        visible={showConnectors}
+        activeTeamId={activeTeamId}
+        onClose={() => setShowConnectors(false)}
+        onSynced={() => void fetchSources()}
+      />
 
       {/* Create Modal */}
       {showCreate && (

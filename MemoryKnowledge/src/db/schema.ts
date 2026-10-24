@@ -153,6 +153,8 @@ export type LlmBinding = typeof llmBinding.$inferSelect;
 export const knowledgeConnector = sqliteTable("knowledge_connector", {
   connectorId: text("connector_id").primaryKey(),
   enabled: integer("enabled").notNull().default(0),
+  serviceId: text("service_id"),
+  teamId: text("team_id"),
   lastRunAt: text("last_run_at"),
   lastSuccessAt: text("last_success_at"),
   lastStatus: text("last_status"),
