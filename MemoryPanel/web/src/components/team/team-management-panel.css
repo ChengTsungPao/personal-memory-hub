@@ -1151,19 +1151,92 @@
   border-top: 1px solid var(--tea-color-border-secondary-default);
 }
 
-@media (max-width: 767px) {
+@media (max-width: 768px) {
   ._memory-agents-panel {
     padding: 12px;
   }
 
-  ._memory-agents-toolbar {
-    justify-content: flex-start;
-    width: 100%;
+  /* Table.ActionPanel / Justify 栅格在手机端纵向排列 */
+  ._memory-agents-panel .tea-table__action-panel,
+  ._memory-agents-panel .tea-table__action-panel .tea-justify-grid,
+  ._memory-agents-panel .tea-justify-grid {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 10px !important;
   }
 
+  /* 新建 Agent 按钮占满一行或靠左自适应 */
+  ._memory-agents-panel .tea-justify-grid__col--left,
+  ._memory-agents-panel .tea-justify-grid__col:first-child {
+    width: 100% !important;
+    text-align: left !important;
+    flex: none !important;
+  }
+
+  ._memory-agents-panel .tea-justify-grid__col--left .tea-btn,
+  ._memory-agents-panel .tea-justify-grid__col:first-child .tea-btn {
+    width: 100% !important;
+    justify-content: center !important;
+    margin-right: 0 !important;
+    height: 32px !important;
+  }
+
+  /* 工具栏容器全宽 */
+  ._memory-agents-panel .tea-justify-grid__col--right {
+    width: 100% !important;
+    padding-left: 0 !important;
+    justify-content: flex-start !important;
+    flex: none !important;
+  }
+
+  ._memory-agents-toolbar {
+    width: 100% !important;
+    display: flex !important;
+    flex-wrap: wrap !important;
+    gap: 8px !important;
+    justify-content: flex-start !important;
+    align-items: center !important;
+  }
+
+  /* 搜索框：在手机端撑满一行，取消 min-width: 280px */
   ._memory-agents-toolbar .tea-form--search,
   ._memory-agents-toolbar .tea-search {
-    flex: 1 1 180px;
+    flex: 1 1 100% !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+  }
+
+  ._memory-agents-toolbar .tea-search .tea-input {
+    width: 100% !important;
+  }
+
+  /* Owner 下拉选择器与视图切换按钮在下一行平铺 */
+  ._memory-agents-toolbar .tea-select {
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
+    max-width: calc(100% - 76px) !important;
+  }
+
+  ._memory-agents-toolbar .tea-select .tea-btn {
+    width: 100% !important;
+    display: flex !important;
+    justify-content: space-between !important;
+    align-items: center !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+  }
+
+  ._memory-agents-toolbar .tea-segment {
+    flex: 0 0 auto !important;
+    margin-left: auto !important;
+  }
+
+  /* 卡片网格在窄屏下自适应单列 */
+  ._memory-agents-card-grid {
+    grid-template-columns: 1fr !important;
   }
 }
 
