@@ -227,3 +227,10 @@ MIT. See [LICENSE](./LICENSE).
 ## Reference
 
 Built on [TencentDB Agent Memory](https://github.com/TencentCloud/TencentDB-Agent-Memory) by Tencent (MIT). This repository is independent, maintained separately, and not affiliated with or endorsed by Tencent. The original copyright notice is retained in [LICENSE](./LICENSE) as the MIT terms require.
+
+---
+
+## Built with AI Agents
+
+- **Claude Code**
+- **Google Antigravity**
