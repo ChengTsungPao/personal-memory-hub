@@ -6,8 +6,9 @@
  * stdin (camelCase protojson): { conversationId, workspacePaths, ... }
  * stdout: { injectSteps: [{ systemMessage: { systemMessage: "..." } }] }, or `{}`.
  *
- * Loads L3 core persona + the L2 scenario index only (L0/L1 are retrieved on
- * demand through the memorycore MCP tools). Every failure path exits 0 with `{}`.
+ * Loads L3 core persona + the L2 scenario index + ready Wiki index (L0/L1 and
+ * Wiki page contents are retrieved on demand through the memorycore MCP tools).
+ * Every failure path exits 0 with `{}`.
  */
 
 import "../lib/env.mjs";
@@ -39,6 +40,24 @@ function renderScenarios(entries) {
   ].join("\n");
 }
 
+function renderWikis(wikis) {
+  const ready = (wikis ?? []).filter((w) => w && w.status === "ready");
+  if (ready.length === 0) return "";
+
+  const lines = ready.map((w) =>
+    w.summary
+      ? `- \`${w.name}\` (\`${w.wiki_id}\`, ${w.page_count} pages) - ${w.summary}`
+      : `- \`${w.name}\` (\`${w.wiki_id}\`, ${w.page_count} pages)`,
+  );
+  return [
+    "### Team Wiki knowledge bases available",
+    "",
+    ...lines,
+    "",
+    "Search with `wiki_search` (set `hop=1..3` for graph expansion) and read pages with `wiki_read`.",
+  ].join("\n");
+}
+
 async function main() {
   const raw = await readStdin();
   let payload = {};
@@ -51,7 +70,11 @@ async function main() {
   const cfg = await loadConfig(payload.workspacePaths?.[0]);
   const client = new CoreClient(cfg);
 
-  const [coreResult, scenarioResult] = await Promise.allSettled([client.readCore(), client.listScenarios()]);
+  const [coreResult, scenarioResult, wikiResult] = await Promise.allSettled([
+    client.readCore(),
+    client.listScenarios(),
+    client.listWikis(),
+  ]);
 
   const sections = [];
   if (coreResult.status === "fulfilled" && coreResult.value?.content) {
@@ -66,6 +89,13 @@ async function main() {
     if (rendered) sections.push(rendered);
   } else {
     debugLog(cfg, "scenario/ls failed:", scenarioResult.reason?.message);
+  }
+
+  if (wikiResult.status === "fulfilled") {
+    const rendered = renderWikis(wikiResult.value ?? []);
+    if (rendered) sections.push(rendered);
+  } else {
+    debugLog(cfg, "wiki/list failed:", wikiResult.reason?.message);
   }
 
   if (sections.length === 0) {
@@ -90,5 +120,5 @@ main()
   })
   .then((out) => {
     process.stdout.write(out);
-    process.exit(0);
+    setTimeout(() => process.exit(0), 20).unref();
   });

@@ -164,4 +164,79 @@ export class CoreClient {
   writeCore(content) {
     return this.post("/v3/core/write", { content });
   }
+
+  // ── Wiki (MemoryKnowledge, port 8424) ─────────────────────────────────
+
+  /** POST a MemoryKnowledge v3 endpoint, returning unwrapped `data`. */
+  async postKnowledge(route, body = {}) {
+    const { cfg } = this;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), cfg.timeoutMs);
+
+    const headers = {
+      "content-type": "application/json",
+      authorization: `Bearer ${cfg.kernelToken || "local"}`,
+      "x-tdai-service-id": cfg.serviceId,
+    };
+
+    try {
+      const res = await fetch(`${cfg.knowledgeEndpoint}${route}`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ team_id: cfg.teamId, user_id: cfg.userId, ...body }),
+        signal: controller.signal,
+      });
+
+      const text = await res.text();
+      let payload;
+      try {
+        payload = text ? JSON.parse(text) : {};
+      } catch {
+        throw new CoreError(`${route}: non-JSON response (${res.status})`, { status: res.status });
+      }
+
+      if (!res.ok || payload.code !== 0) {
+        throw new CoreError(`${route}: ${payload.message ?? `HTTP ${res.status}`}`, {
+          status: res.status,
+          code: payload.code,
+          requestId: payload.request_id,
+        });
+      }
+      return payload.data;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  async listWikis() {
+    const data = await this.postKnowledge("/v3/wiki/list", { limit: 100 });
+    return (data?.items ?? []).map((w) => ({
+      wiki_id: w.wiki_id,
+      name: w.name,
+      status: w.status,
+      page_count: w.page_count ?? 0,
+      source_count: w.source_count ?? 0,
+      summary: w.summary ?? null,
+    }));
+  }
+
+  searchWiki(wikiId, { query, limit = 20, hop, decay, minScore }) {
+    const body = { wiki_id: wikiId, query, limit };
+    if (hop !== undefined) body.hop = hop;
+    if (decay !== undefined) body.decay = decay;
+    if (minScore !== undefined) body.minScore = minScore;
+    return this.postKnowledge("/v3/wiki/search", body);
+  }
+
+  readWikiPages(wikiId, refs) {
+    return this.postKnowledge("/v3/wiki/page/read", { wiki_id: wikiId, refs });
+  }
+
+  listWikiPages(wikiId) {
+    return this.postKnowledge("/v3/wiki/page/ls", { wiki_id: wikiId });
+  }
+
+  getWikiGraph(wikiId) {
+    return this.postKnowledge("/v3/wiki/graph", { wiki_id: wikiId });
+  }
 }

@@ -150,11 +150,13 @@ async function resolveAgentId(cfg, projectKey, projectName) {
  */
 export async function loadConfig(cwd = process.cwd()) {
   const endpoint = (process.env.TDAI_ENDPOINT ?? "http://127.0.0.1:8420").replace(/\/+$/, "");
+  const knowledgeEndpoint = (process.env.TDAI_KNOWLEDGE_ENDPOINT ?? "http://127.0.0.1:8424").replace(/\/+$/, "");
   const stateDir = process.env.TDAI_STATE_DIR ?? path.join(os.homedir(), ".memory-tdai", "claude-code");
   const adminKeyFile = process.env.TDAI_ADMIN_KEY_FILE ?? path.join(HUB_DIR, "admin-key");
 
   const cfg = {
     endpoint,
+    knowledgeEndpoint,
     /** Instance id — `default` for a local single-instance deploy. */
     serviceId: process.env.TDAI_SERVICE_ID ?? "default",
     /** Layer-1 gateway token. Unset is fine when the gateway has no apiKey. */

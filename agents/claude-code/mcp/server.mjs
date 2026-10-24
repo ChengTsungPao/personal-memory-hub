@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 /**
- * MemoryCore MCP server (stdio) — on-demand memory access for Claude Code.
+ * MemoryCore + Knowledge MCP server (stdio) — on-demand memory & wiki access.
  *
  * The hooks handle the automatic half of memory: `Stop` captures every turn
- * into L0, `SessionStart` injects the L3 persona and the L2 index. This server
- * handles the deliberate half — searching older memory when a question needs
- * it, and writing curated scenario blocks and persona updates.
+ * into L0, `SessionStart` injects the L3 persona, L2 index, and Wiki index.
+ * This server handles the deliberate half — searching older memory, writing
+ * curated scenario blocks / persona updates, and querying team Wiki knowledge
+ * bases (full-text BM25 + graph multi-hop expansion).
  *
  * JSON-RPC 2.0 over stdio is implemented directly rather than via
  * @modelcontextprotocol/sdk so the file has zero dependencies and can be
@@ -24,6 +25,10 @@ const client = new CoreClient(cfg);
 const AGENT_DESC =
   "Optional, read-only lookup of ANOTHER project's memory: an agent name (e.g. 'sweetlips') " +
   "or id ('agt-...'). See agent_list. Omit to use this session's own agent.";
+
+const WIKI_DESC =
+  "Wiki name (e.g. 'Jack_Notion') or wiki_id ('wiki-...'). See wiki_sources. " +
+  "Omit when the team has only one ready Wiki knowledge base.";
 
 const TOOLS = [
   {
@@ -100,9 +105,12 @@ const TOOLS = [
     description:
       "Read the L3 core persona — the user's stable long-term profile. Returns null content " +
       "when nothing has been written yet.",
-    inputSchema: { type: "object", properties: {
+    inputSchema: {
+      type: "object",
+      properties: {
         agent: { type: "string", description: AGENT_DESC },
-    } },
+      },
+    },
   },
   {
     name: "core_write",
@@ -114,6 +122,89 @@ const TOOLS = [
       type: "object",
       properties: { content: { type: "string", description: "Full Markdown persona document." } },
       required: ["content"],
+    },
+  },
+  // ── Wiki knowledge base tools (MemoryKnowledge, port 8424) ──────────────
+  {
+    name: "wiki_sources",
+    description:
+      "List all Wiki knowledge bases in this team (e.g. Notion-synced or uploaded Wikis), " +
+      "returning wiki_id, name, status, page_count, and summary.",
+    inputSchema: { type: "object", properties: {} },
+  },
+  {
+    name: "wiki_search",
+    description:
+      "Search Wiki pages by keyword (BM25 full-text search) with optional knowledge-graph " +
+      "multi-hop expansion (`hop`: 1..5 walks [[wikilink]] edges from matched seed pages to " +
+      "surface graph-connected pages). Returns matched pages, neighbour `related` pages, and `links`.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "Search query keywords." },
+        wiki: { type: "string", description: WIKI_DESC },
+        wiki_id: { type: "string", description: "Alias for `wiki`." },
+        limit: { type: "integer", description: "Max results (default: 20)." },
+        hop: {
+          type: "integer",
+          minimum: 0,
+          maximum: 5,
+          description: "Graph expansion depth: 0 = pure BM25 (default), 1..5 = walk [[wikilink]] edges from seeds.",
+        },
+        decay: {
+          type: "number",
+          minimum: 0,
+          maximum: 1,
+          description: "Per-hop score decay factor when hop > 0 (default: 0.5).",
+        },
+        minScore: {
+          type: "number",
+          minimum: 0,
+          description: "Minimum score threshold when hop > 0 (default: 0.1).",
+        },
+      },
+      required: ["query"],
+    },
+  },
+  {
+    name: "wiki_read",
+    description:
+      "Read full Markdown content of one or more Wiki pages by reference (page id or relative path without .md, " +
+      "as returned by wiki_search or wiki_list).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        refs: {
+          type: "array",
+          items: { type: "string" },
+          description: "Page references (ids or paths, e.g. ['entity-xxx', 'concept-yyy']).",
+        },
+        wiki: { type: "string", description: WIKI_DESC },
+        wiki_id: { type: "string", description: "Alias for `wiki`." },
+      },
+      required: ["refs"],
+    },
+  },
+  {
+    name: "wiki_list",
+    description: "List all pages in a Wiki knowledge base with metadata (id, title, type, path).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        wiki: { type: "string", description: WIKI_DESC },
+        wiki_id: { type: "string", description: "Alias for `wiki`." },
+      },
+    },
+  },
+  {
+    name: "wiki_graph",
+    description: "Get the knowledge graph (nodes, edges, communities) of a Wiki knowledge base.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        wiki: { type: "string", description: WIKI_DESC },
+        wiki_id: { type: "string", description: "Alias for `wiki`." },
+      },
     },
   },
 ];
@@ -129,6 +220,36 @@ async function resolveAgent(ref) {
     throw new Error(`unknown agent "${ref}". Known: ${agents.map((a) => `${a.name} (${a.agent_id})`).join(", ")}`);
   }
   return hit.agent_id;
+}
+
+/**
+ * Wiki name or wiki_id -> wiki_id.
+ * When omitted, auto-selects if the team has exactly one ready Wiki.
+ */
+async function resolveWiki(ref) {
+  const wikis = await client.listWikis();
+  if (wikis.length === 0) {
+    throw new Error("no Wiki knowledge bases found in this team.");
+  }
+  if (!ref) {
+    const ready = wikis.filter((w) => w.status === "ready");
+    if (ready.length === 1) return ready[0].wiki_id;
+    if (wikis.length === 1) return wikis[0].wiki_id;
+    throw new Error(
+      `multiple Wikis exist; specify 'wiki'. Available: ${wikis.map((w) => `${w.name} (${w.wiki_id}, ${w.page_count}p)`).join(", ")}`,
+    );
+  }
+  const lower = String(ref).toLowerCase();
+  const hit =
+    wikis.find((w) => w.wiki_id === ref) ??
+    wikis.find((w) => w.name === ref) ??
+    wikis.find((w) => w.name?.toLowerCase() === lower);
+  if (!hit) {
+    throw new Error(
+      `unknown Wiki "${ref}". Available: ${wikis.map((w) => `${w.name} (${w.wiki_id}, ${w.page_count}p)`).join(", ")}`,
+    );
+  }
+  return hit.wiki_id;
 }
 
 async function callTool(name, args = {}) {
@@ -178,6 +299,48 @@ async function callTool(name, args = {}) {
     case "core_write":
       return client.writeCore(args.content);
 
+    case "wiki_sources":
+      return client.listWikis();
+
+    case "wiki_search": {
+      const wikiId = await resolveWiki(args.wiki ?? args.wiki_id);
+      const res = await client.searchWiki(wikiId, {
+        query: args.query,
+        limit: args.limit ?? 20,
+        hop: args.hop,
+        decay: args.decay,
+        minScore: args.minScore,
+      });
+      // SQLite FTS5 BM25 scores for very frequent terms (appearing in >50% of pages,
+      // e.g. "Agent" in an Agent Wiki) can be < 0.1 (the default minScore when hop > 0).
+      // Retry with minScore: 0 so high-frequency queries still return seeds + graph hops.
+      if ((args.hop ?? 0) > 0 && args.minScore === undefined && (res?.count ?? 0) === 0) {
+        return client.searchWiki(wikiId, {
+          query: args.query,
+          limit: args.limit ?? 20,
+          hop: args.hop,
+          decay: args.decay,
+          minScore: 0,
+        });
+      }
+      return res;
+    }
+
+    case "wiki_read": {
+      const wikiId = await resolveWiki(args.wiki ?? args.wiki_id);
+      return client.readWikiPages(wikiId, args.refs);
+    }
+
+    case "wiki_list": {
+      const wikiId = await resolveWiki(args.wiki ?? args.wiki_id);
+      return client.listWikiPages(wikiId);
+    }
+
+    case "wiki_graph": {
+      const wikiId = await resolveWiki(args.wiki ?? args.wiki_id);
+      return client.getWikiGraph(wikiId);
+    }
+
     default:
       throw new Error(`unknown tool: ${name}`);
   }
@@ -208,7 +371,7 @@ async function handle(request) {
       return respond(id, {
         protocolVersion: PROTOCOL_VERSION,
         capabilities: { tools: {} },
-        serverInfo: { name: "memorycore", version: "0.1.0" },
+        serverInfo: { name: "memorycore", version: "0.2.0" },
       });
 
     case "ping":
@@ -240,6 +403,15 @@ async function handle(request) {
 }
 
 let buffer = "";
+let stdinEnded = false;
+const inFlight = new Set();
+
+function maybeExit() {
+  if (stdinEnded && inFlight.size === 0) {
+    setTimeout(() => process.exit(0), 20).unref();
+  }
+}
+
 process.stdin.setEncoding("utf8");
 process.stdin.on("data", (chunk) => {
   buffer += chunk;
@@ -254,10 +426,19 @@ process.stdin.on("data", (chunk) => {
     } catch {
       continue; // ignore malformed frames rather than dying mid-session
     }
-    handle(request).catch((err) => {
-      if (request?.id != null) respondError(request.id, -32603, err?.message ?? String(err));
-    });
+    const p = handle(request)
+      .catch((err) => {
+        if (request?.id != null) respondError(request.id, -32603, err?.message ?? String(err));
+      })
+      .finally(() => {
+        inFlight.delete(p);
+        maybeExit();
+      });
+    inFlight.add(p);
   }
 });
 
-process.stdin.on("end", () => process.exit(0));
+process.stdin.on("end", () => {
+  stdinEnded = true;
+  maybeExit();
+});
