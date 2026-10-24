@@ -125,38 +125,142 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <Modal visible caption={t('settings.caption')} size="m" onClose={onClose}>
+    <Modal visible caption={t('settings.caption')} size="l" onClose={onClose}>
       <Modal.Body>
-        {/* 模型调整快捷跳转卡片 */}
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            padding: '12px 14px',
-            marginBottom: 20,
-            border: '1px solid var(--tea-color-border-primary-default)',
-            borderRadius: 6,
-            background: 'var(--tea-color-bg-secondary-default)',
-          }}
-        >
-          <div style={{ minWidth: 0, paddingRight: 12 }}>
-            <Text style={{ fontSize: 13, fontWeight: 600, display: 'block' }}>
-              {t('settings.modelSettings.title')}
-            </Text>
-            <Text theme="weak" style={{ fontSize: 12, marginTop: 2, display: 'block' }}>
-              {t('settings.modelSettings.desc')}
-            </Text>
+        {/* 系统与指引模块入口 */}
+        <div style={{ marginBottom: 24 }}>
+          <Text theme="label" style={{ display: 'block', marginBottom: 10, fontWeight: 600 }}>
+            {t('settings.navSection.title')}
+          </Text>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 10 }}>
+            {/* 1. 模型调整 */}
+            <div
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'space-between',
+                padding: '12px 14px',
+                border: '1px solid var(--tea-color-border-primary-default)',
+                borderRadius: 6,
+                background: 'var(--tea-color-bg-secondary-default)',
+              }}
+            >
+              <div>
+                <Text style={{ fontSize: 13, fontWeight: 600, display: 'block' }}>
+                  {t('settings.nav.models.title')}
+                </Text>
+                <Text theme="weak" style={{ fontSize: 12, marginTop: 4, display: 'block' }}>
+                  {t('settings.nav.models.desc')}
+                </Text>
+              </div>
+              <Button
+                type="primary"
+                style={{ marginTop: 12, alignSelf: 'flex-start' }}
+                onClick={() => {
+                  onClose();
+                  navigate('/models');
+                }}
+              >
+                {t('settings.nav.models.btn')}
+              </Button>
+            </div>
+
+            {/* 2. 快速上手 */}
+            <div
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'space-between',
+                padding: '12px 14px',
+                border: '1px solid var(--tea-color-border-primary-default)',
+                borderRadius: 6,
+                background: 'var(--tea-color-bg-secondary-default)',
+              }}
+            >
+              <div>
+                <Text style={{ fontSize: 13, fontWeight: 600, display: 'block' }}>
+                  {t('settings.nav.quick.title')}
+                </Text>
+                <Text theme="weak" style={{ fontSize: 12, marginTop: 4, display: 'block' }}>
+                  {t('settings.nav.quick.desc')}
+                </Text>
+              </div>
+              <Button
+                type="weak"
+                style={{ marginTop: 12, alignSelf: 'flex-start' }}
+                onClick={() => {
+                  onClose();
+                  navigate('/docs/quick');
+                }}
+              >
+                {t('settings.nav.quick.btn')}
+              </Button>
+            </div>
+
+            {/* 3. 最佳实践 */}
+            <div
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'space-between',
+                padding: '12px 14px',
+                border: '1px solid var(--tea-color-border-primary-default)',
+                borderRadius: 6,
+                background: 'var(--tea-color-bg-secondary-default)',
+              }}
+            >
+              <div>
+                <Text style={{ fontSize: 13, fontWeight: 600, display: 'block' }}>
+                  {t('settings.nav.practice.title')}
+                </Text>
+                <Text theme="weak" style={{ fontSize: 12, marginTop: 4, display: 'block' }}>
+                  {t('settings.nav.practice.desc')}
+                </Text>
+              </div>
+              <Button
+                type="weak"
+                style={{ marginTop: 12, alignSelf: 'flex-start' }}
+                onClick={() => {
+                  onClose();
+                  navigate('/docs/practice');
+                }}
+              >
+                {t('settings.nav.practice.btn')}
+              </Button>
+            </div>
+
+            {/* 4. 命令速查 */}
+            <div
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'space-between',
+                padding: '12px 14px',
+                border: '1px solid var(--tea-color-border-primary-default)',
+                borderRadius: 6,
+                background: 'var(--tea-color-bg-secondary-default)',
+              }}
+            >
+              <div>
+                <Text style={{ fontSize: 13, fontWeight: 600, display: 'block' }}>
+                  {t('settings.nav.commands.title')}
+                </Text>
+                <Text theme="weak" style={{ fontSize: 12, marginTop: 4, display: 'block' }}>
+                  {t('settings.nav.commands.desc')}
+                </Text>
+              </div>
+              <Button
+                type="weak"
+                style={{ marginTop: 12, alignSelf: 'flex-start' }}
+                onClick={() => {
+                  onClose();
+                  navigate('/docs/commands');
+                }}
+              >
+                {t('settings.nav.commands.btn')}
+              </Button>
+            </div>
           </div>
-          <Button
-            type="primary"
-            onClick={() => {
-              onClose();
-              navigate('/guide');
-            }}
-          >
-            {t('settings.modelSettings.btn')}
-          </Button>
         </div>
 
         <div>
