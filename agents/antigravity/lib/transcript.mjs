@@ -47,6 +47,8 @@ export function readNewMessages(transcriptPath, afterStep) {
   let last = afterStep;
   let scanned = 0;
 
+  let maxIdx = -1;
+
   for (const line of lines) {
     if (!line.trim()) continue;
     let step;
@@ -58,7 +60,9 @@ export function readNewMessages(transcriptPath, afterStep) {
     scanned += 1;
 
     const idx = step.step_index;
-    if (typeof idx !== "number" || idx <= after) continue;
+    if (typeof idx !== "number") continue;
+    if (idx > maxIdx) maxIdx = idx;
+    if (idx <= after) continue;
     last = String(idx);
 
     let role;
@@ -81,6 +85,12 @@ export function readNewMessages(transcriptPath, afterStep) {
       timestamp: when,
       recorded_at: when,
     });
+  }
+
+  // If the cursor is ahead of the highest step_index in the transcript (e.g. context compaction,
+  // transcript truncated or session restarted), the cursor is dangling. Re-read without cursor.
+  if (afterStep != null && maxIdx >= 0 && maxIdx < after) {
+    return readNewMessages(transcriptPath, null);
   }
 
   return { messages, lastUuid: last, scanned };
