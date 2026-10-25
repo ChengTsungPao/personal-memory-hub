@@ -212,6 +212,18 @@ export async function loadConfig(cwd = process.cwd()) {
   const stateDir = process.env.TDAI_STATE_DIR ?? path.join(os.homedir(), ".memory-tdai", "claude-code");
   const adminKeyFile = process.env.TDAI_ADMIN_KEY_FILE ?? path.join(HUB_DIR, "admin-key");
 
+  let fallbackTeam = "default";
+  let fallbackUser = "default";
+  try {
+    const claudeJsonPath = path.join(os.homedir(), ".claude.json");
+    if (existsSync(claudeJsonPath)) {
+      const parsed = JSON.parse(readFileSync(claudeJsonPath, "utf8"));
+      const mcpEnv = parsed?.mcpServers?.memorycore?.env ?? {};
+      if (mcpEnv.TDAI_TEAM_ID) fallbackTeam = mcpEnv.TDAI_TEAM_ID;
+      if (mcpEnv.TDAI_USER_ID) fallbackUser = mcpEnv.TDAI_USER_ID;
+    }
+  } catch {}
+
   const cfg = {
     endpoint,
     knowledgeEndpoint,
@@ -220,8 +232,8 @@ export async function loadConfig(cwd = process.cwd()) {
     /** Layer-1 gateway token. Unset is fine when the gateway has no apiKey. */
     kernelToken: process.env.TDAI_KERNEL_TOKEN ?? "",
     /** v3 enforces the team+agent+user triple; absent values fall back to `default`. */
-    teamId: process.env.TDAI_TEAM_ID ?? "default",
-    userId: process.env.TDAI_USER_ID ?? "default",
+    teamId: process.env.TDAI_TEAM_ID ?? fallbackTeam,
+    userId: process.env.TDAI_USER_ID ?? fallbackUser,
     /** Optional business dimension — omitted entirely when unset. */
     taskId: process.env.TDAI_TASK_ID ?? "",
     /** Per-request timeout. Hooks must never hang a turn. */
