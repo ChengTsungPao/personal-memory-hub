@@ -2008,9 +2008,9 @@ const KIND = 'dsh' as const;
 
 function readZstdUtf8(path: string): string | null {
   try {
-    const r = spawnSync('zstd', ['-d', '-c', path], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+    const r = spawnSync('zstd', ['-d', '-c', path], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, windowsHide: true });
     if (r.status === 0) return r.stdout;
-    const fallback = spawnSync('unzstd', ['-c', path], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+    const fallback = spawnSync('unzstd', ['-c', path], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, windowsHide: true });
     if (fallback.status === 0) return fallback.stdout;
     return null;
   } catch {
