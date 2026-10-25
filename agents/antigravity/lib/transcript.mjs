@@ -34,36 +34,53 @@ function userText(content) {
 
 /**
  * @param {string} transcriptPath
- * @param {string|null} afterStep  Only return steps with step_index greater than this.
+ * @param {string|null} afterStep  Only return steps after this cursor.
+ *                                 Supports line-based cursor ("L:<lineIndex>") or legacy step_index.
  * @returns {{messages: Array, lastUuid: string|null, scanned: number}}
- *   `lastUuid` carries the last step index (as a string) so callers can reuse
- *   the Claude Code cursor helpers unchanged.
  */
 export function readNewMessages(transcriptPath, afterStep) {
-  const after = afterStep == null ? -1 : Number(afterStep);
   const lines = fs.readFileSync(transcriptPath, "utf8").split("\n");
 
+  let afterLine = -1;
+  if (afterStep != null) {
+    if (typeof afterStep === "string" && afterStep.startsWith("L:")) {
+      const parsed = parseInt(afterStep.slice(2), 10);
+      if (!Number.isNaN(parsed) && parsed >= 0 && parsed < lines.length) {
+        afterLine = parsed;
+      }
+    } else {
+      const targetIdx = Number(afterStep);
+      if (!Number.isNaN(targetIdx)) {
+        for (let i = lines.length - 1; i >= 0; i--) {
+          if (!lines[i].trim()) continue;
+          try {
+            const o = JSON.parse(lines[i]);
+            if (o.step_index === targetIdx) {
+              afterLine = i;
+              break;
+            }
+          } catch {}
+        }
+      }
+    }
+  }
+
   const messages = [];
-  let last = afterStep;
+  let lastLine = afterLine >= 0 ? afterLine : -1;
   let scanned = 0;
 
-  let maxIdx = -1;
-
-  for (const line of lines) {
+  for (let i = afterLine + 1; i < lines.length; i++) {
+    const line = lines[i];
     if (!line.trim()) continue;
+    scanned += 1;
+    lastLine = i;
+
     let step;
     try {
       step = JSON.parse(line);
     } catch {
       continue; // partially flushed final line
     }
-    scanned += 1;
-
-    const idx = step.step_index;
-    if (typeof idx !== "number") continue;
-    if (idx > maxIdx) maxIdx = idx;
-    if (idx <= after) continue;
-    last = String(idx);
 
     let role;
     let text = "";
@@ -87,11 +104,6 @@ export function readNewMessages(transcriptPath, afterStep) {
     });
   }
 
-  // If the cursor is ahead of the highest step_index in the transcript (e.g. context compaction,
-  // transcript truncated or session restarted), the cursor is dangling. Re-read without cursor.
-  if (afterStep != null && maxIdx >= 0 && maxIdx < after) {
-    return readNewMessages(transcriptPath, null);
-  }
-
-  return { messages, lastUuid: last, scanned };
+  const lastUuid = lastLine >= 0 ? `L:${lastLine}` : null;
+  return { messages, lastUuid, scanned };
 }
