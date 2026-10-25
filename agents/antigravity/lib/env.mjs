@@ -25,5 +25,17 @@ try {
   // No mcp_config.json / no memorycore entry: fall back to config.mjs defaults.
 }
 
+if (!process.env.TDAI_TEAM_ID || !process.env.TDAI_USER_ID) {
+  try {
+    const claudeRaw = fs.readFileSync(path.join(os.homedir(), ".claude.json"), "utf8").replace(/^\uFEFF/, "");
+    const claudeEnv = JSON.parse(claudeRaw)?.mcpServers?.memorycore?.env ?? {};
+    for (const [k, v] of Object.entries(claudeEnv)) {
+      if (k.startsWith("TDAI_") && process.env[k] === undefined) process.env[k] = String(v);
+    }
+  } catch {
+    // No ~/.claude.json
+  }
+}
+
 // Keep Antigravity's capture cursors apart from Claude Code's.
 process.env.TDAI_STATE_DIR ??= path.join(os.homedir(), ".memory-tdai", "antigravity");
