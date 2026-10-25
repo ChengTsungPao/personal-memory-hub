@@ -1,0 +1,9 @@
+# Set default behavior to automatically handle line endings
+* text=auto
+
+# Enforce LF line endings for git configuration, shell scripts, and executable JS files
+.gitattributes text eol=lf
+*.sh text eol=lf
+*.bash text eol=lf
+*.mjs text eol=lf
+
