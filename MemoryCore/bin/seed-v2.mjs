@@ -26,7 +26,7 @@ if (fs.existsSync(distEntry)) {
   const result = spawnSync(
     process.execPath,
     ["--import", "tsx", srcEntry, ...process.argv.slice(2)],
-    { stdio: "inherit" },
+    { stdio: "inherit", windowsHide: true },
   );
   process.exit(result.status ?? 1);
 } else {

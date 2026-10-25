@@ -228,6 +228,7 @@ function runClaude({ system, prompt, model, resumeSessionId }) {
         CLAUDE_CODE_OAUTH_TOKEN: OAUTH_TOKEN,
       },
       shell: false,
+      windowsHide: true,
       stdio: ["pipe", "pipe", "pipe"],
     });
     child.stdin.end(prompt);
@@ -329,6 +330,7 @@ function runSwitchScript(args) {
     const child = spawn("bash", [SWITCH_SCRIPT, ...args], {
       cwd: path.dirname(SWITCH_SCRIPT),
       shell: false,
+      windowsHide: true,
       stdio: ["ignore", "pipe", "pipe"],
     });
     let out = "", err = "";

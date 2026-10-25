@@ -44,7 +44,7 @@ const ADHOC_NAME = "adhoc-chat";
  */
 function deriveProjectKey(cwd) {
   if (cwd) {
-    const gitOpts = { cwd, stdio: ["ignore", "pipe", "ignore"], timeout: 3000 };
+    const gitOpts = { cwd, stdio: ["ignore", "pipe", "ignore"], timeout: 3000, windowsHide: true };
     try {
       const remote = execFileSync("git", ["remote", "get-url", "origin"], gitOpts).toString().trim();
       if (remote) {
