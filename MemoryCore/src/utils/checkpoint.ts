@@ -507,13 +507,17 @@ export class CheckpointManager {
   // Persona methods (L3)
   // ============================
 
-  async markPersonaGenerated(totalProcessed: number): Promise<void> {
+  /**
+   * @param opts.coveredUntil  The persona covered the scenes changed up to this time only (chunk limit):
+   *   record that time instead of "now", and ask for another update so the rest is not forgotten.
+   */
+  async markPersonaGenerated(totalProcessed: number, opts?: { coveredUntil?: string }): Promise<void> {
     await this.mutate((cp) => {
       cp.last_persona_at = totalProcessed;
-      cp.last_persona_time = new Date().toISOString();
+      cp.last_persona_time = opts?.coveredUntil ?? new Date().toISOString();
       cp.memories_since_last_persona = 0;
-      cp.request_persona_update = false;
-      cp.persona_update_reason = "";
+      cp.request_persona_update = Boolean(opts?.coveredUntil);
+      cp.persona_update_reason = opts?.coveredUntil ? "chunk limit: changed scenes left for the next update" : "";
     });
   }
 

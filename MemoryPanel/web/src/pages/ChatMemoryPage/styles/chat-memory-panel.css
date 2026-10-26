@@ -1290,3 +1290,45 @@
     width: 100% !important;
   }
 }
+
+/* L1 extraction state (useL1Status): a dot in the bubble's corner, nothing when done */
+._memory-chat-l1 {
+  position: absolute;
+  top: -7px;
+  right: -7px;
+  font-size: 11px;
+  line-height: 1;
+  pointer-events: auto;
+  cursor: help;
+  filter: drop-shadow(0 0 1px var(--tea-color-bg-primary-default));
+}
+._memory-chat-row--user ._memory-chat-l1 {
+  right: auto;
+  left: -7px;
+}
+._memory-chat-l1--pending {
+  animation: _memory-chat-l1-pulse 1.6s ease-in-out infinite;
+}
+@keyframes _memory-chat-l1-pulse {
+  50% { opacity: 0.35; }
+}
+@media (prefers-reduced-motion: reduce) {
+  ._memory-chat-l1--pending { animation: none; }
+}
+
+/* per-layer counts next to the L0 / L1 labels: [🔴 2] [🟡 1] */
+._memory-detail-l1-badges {
+  display: inline-flex;
+  gap: 4px;
+  margin-left: 6px;
+  margin-right: auto;
+}
+._memory-detail-l1-badge {
+  font-size: 11px;
+  line-height: 16px;
+  padding: 0 5px;
+  border-radius: 8px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  background: var(--tea-color-bg-secondary-default, rgba(0, 0, 0, 0.05));
+}

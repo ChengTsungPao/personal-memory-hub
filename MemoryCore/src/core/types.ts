@@ -71,6 +71,16 @@ export interface LLMRunParams {
   taskId: string;
   /** Execution timeout in milliseconds (default: 120_000). */
   timeoutMs?: number;
+  /**
+   * Async job mode only (TDAI_LLM_ASYNC_JOBS=true, see llm-runner.ts): the queue priority at the
+   * LLM gateway. "normal" for pipeline work, "idle_only" for background catch-up (scavenger).
+   */
+  priority?: "high" | "normal" | "idle_only";
+  /**
+   * Async job mode only: a deterministic key for this unit of work (e.g. `L1:<session>:<from>_<to>`).
+   * The same key resubmitted returns the gateway's existing job instead of running the work twice.
+   */
+  dedupKey?: string;
   /** Max output tokens (optional — defaults to model catalog value). */
   maxTokens?: number;
   /**

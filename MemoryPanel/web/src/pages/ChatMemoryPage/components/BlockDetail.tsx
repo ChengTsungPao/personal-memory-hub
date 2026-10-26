@@ -10,6 +10,7 @@ import { useUserDisplayName } from '@/services/user-profile-store';
 import { tea } from '@/lib/tea-bridge';
 import { MarkdownView } from '@/components/MarkdownView';
 import type { ChatMemorySearchHit } from '@/lib/teamApi';
+import { statusOfMessage, useL1Status } from '../hooks/useL1Status';
 import {
   AppIcon,
   UsergroupIcon,
@@ -454,6 +455,8 @@ export function BlockDetail({
   onRefresh?: () => void;
 }) {
   const { t } = useTranslation();
+  // L1 extraction state of the loaded conversation: 🟡 queued/running, 🔴 failed (polls only while 🟡)
+  const { slices: l1Slices, counts: l1Counts } = useL1Status(block.id, block.layers.L0, layer === 'L0' || layer === 'L1');
   const LAYERS = useLayers();
   // 分页只针对「当前时间窗口内」的条目：layerTotal 是窗口内总数（父级从 BFF 的
   // res.total 取），列表数据也是窗口内的，两者一致才不会有「全量总页数翻到空页」。
@@ -721,6 +724,20 @@ export function BlockDetail({
             >
               <div className="_memory-detail-layer-btn-top">
                 <span className="_memory-detail-layer-label">{l.label}</span>
+                {(l.id === 'L0' || l.id === 'L1') && (l1Counts.failed > 0 || l1Counts.pending > 0) && (
+                  <span className="_memory-detail-l1-badges">
+                    {l1Counts.failed > 0 && (
+                      <span className="_memory-detail-l1-badge _memory-detail-l1-badge--failed" title={t('memory.detail.l1Failed')}>
+                        🔴 {l1Counts.failed}
+                      </span>
+                    )}
+                    {l1Counts.pending > 0 && (
+                      <span className="_memory-detail-l1-badge _memory-detail-l1-badge--pending" title={t('memory.detail.l1Pending')}>
+                        🟡 {l1Counts.pending}
+                      </span>
+                    )}
+                  </span>
+                )}
                 <span
                   className="_memory-detail-layer-count"
                   title={known ? undefined : t('memory.detail.clickToLoad')}
@@ -979,6 +996,18 @@ export function BlockDetail({
                           )}
                         </div>
                         <div className={`_memory-chat-bubble _memory-chat-bubble--${tone}`}>
+                          {(() => {
+                            const st = statusOfMessage(msg, l1Slices);
+                            return st ? (
+                              <span
+                                className={`_memory-chat-l1 _memory-chat-l1--${st}`}
+                                title={t(st === 'failed' ? 'memory.detail.l1Failed' : 'memory.detail.l1Pending')}
+                                aria-label={t(st === 'failed' ? 'memory.detail.l1Failed' : 'memory.detail.l1Pending')}
+                              >
+                                {st === 'failed' ? '🔴' : '🟡'}
+                              </span>
+                            ) : null;
+                          })()}
                           <pre className="_memory-chat-body">{cleanBody}</pre>
                         </div>
                       </div>

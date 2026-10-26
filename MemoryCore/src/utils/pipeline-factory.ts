@@ -627,6 +627,12 @@ export function createL1Runner(opts: {
             conflictRecallTopK: cfg.embedding.conflictRecallTopK,
             embeddingTimeoutMs: cfg.embedding.captureTimeoutMs ?? cfg.embedding.timeoutMs,
             llmRunner,
+            // Deterministic per slice: an idle-timer retry and a manual retry of the same range find the
+            // same gateway job instead of running (and paying for) the extraction twice.
+            job: {
+              priority: "normal",
+              dedupKey: `L1:${group.sessionId || sessionKey}:${runnerState.last_l1_cursor || 0}_${maxRecordedAtMs}`,
+            },
           },
           logger,
           instanceId: getInstanceId?.(),
@@ -665,6 +671,118 @@ export function createL1Runner(opts: {
       logger.error(`${TAG} [l1] L1 failed: ${err instanceof Error ? err.stack ?? err.message : String(err)}`);
       throw err;
     }
+  };
+}
+
+// ============================
+// L1 idle scavenger (see core/record/l1-scavenger.ts)
+// ============================
+
+export interface L1ScavengeResult {
+  windowsChecked: number;
+  gapsExtracted: number;
+  stored: number;
+  /** Set when an extraction failed; the run stopped there and the window is tried again next run. */
+  error?: string;
+}
+
+/**
+ * Walk each session's L0 history up to its L1 cursor and extract the windows no L1 memory covers,
+ * as `idle_only` jobs (the LLM gateway runs them only when the GPU is otherwise idle). Never moves
+ * an L1 cursor. `maxExtractions` bounds the LLM work of one run.
+ */
+export function createL1Scavenger(opts: {
+  pluginDataDir: string;
+  cfg: MemoryTdaiConfig;
+  vectorStore: IMemoryStore;
+  embeddingService: EmbeddingService | undefined;
+  logger: PipelineLogger;
+  getInstanceId?: () => string | undefined;
+  llmRunner: import("../core/types.js").LLMRunner;
+  storage?: StorageAdapter;
+  windowSize?: number;
+  maxExtractions?: number;
+}): () => Promise<L1ScavengeResult> {
+  const { pluginDataDir, cfg, vectorStore, embeddingService, logger, getInstanceId, llmRunner, storage } = opts;
+  const windowSize = opts.windowSize ?? 20;
+  const maxExtractions = opts.maxExtractions ?? 3;
+
+  return async () => {
+    const {
+      groupWindow, isWindowCovered, loadScavengerState, nextWindow, saveScavengerState,
+    } = await import("../core/record/l1-scavenger.js");
+    const result: L1ScavengeResult = { windowsChecked: 0, gapsExtracted: 0, stored: 0 };
+    if (vectorStore.isDegraded()) return result;
+
+    const cp = await new CheckpointManager(pluginDataDir, logger, storage).read();
+    const state = await loadScavengerState(pluginDataDir, storage);
+    try {
+      for (const [sessionKey, runner] of Object.entries(cp.runner_states ?? {})) {
+        const cursor = runner.last_l1_cursor ?? 0;
+        let from = state.sessions[sessionKey]?.scavenged_until ?? 0;
+        if (cursor <= 0 || from >= cursor) continue;
+        let l1: Awaited<ReturnType<IMemoryStore["queryL1Records"]>> | undefined;
+
+        while (from < cursor) {
+          const window = await nextWindow(vectorStore, sessionKey, from, cursor, windowSize);
+          if (window.length === 0) {
+            from = cursor;
+            break;
+          }
+          const windowEnd = window[window.length - 1].recordedAtMs;
+          result.windowsChecked += 1;
+          l1 ??= await vectorStore.queryL1Records({ sessionKey });
+          if (!isWindowCovered(window, l1)) {
+            if (result.gapsExtracted >= maxExtractions) return result;     // enough LLM work for this run
+            const groups = groupWindow(window);
+            const prompts = await resolveMemoryPrompts(vectorStore, groups.map((g) => ({
+              teamId: g.teamId, agentId: g.agentId, layer: "l1" as const,
+            })));
+            for (const g of groups) {
+              const r = await extractL1Memories({
+                messages: g.messages,
+                sessionKey,
+                sessionId: g.sessionId,
+                taskId: g.taskId,
+                teamId: g.teamId,
+                userId: g.userId,
+                agentId: g.agentId,
+                baseDir: pluginDataDir,
+                config: undefined,
+                options: {
+                  enableDedup: cfg.extraction.enableDedup,
+                  maxMemoriesPerSession: cfg.extraction.maxMemoriesPerSession,
+                  model: cfg.extraction.model,
+                  promptMode: cfg.extraction.promptMode,
+                  memoryPrompt: prompts.get(memoryPromptResolveKey({ teamId: g.teamId, agentId: g.agentId, layer: "l1" })),
+                  vectorStore,
+                  embeddingService,
+                  conflictRecallTopK: cfg.embedding.conflictRecallTopK,
+                  embeddingTimeoutMs: cfg.embedding.captureTimeoutMs ?? cfg.embedding.timeoutMs,
+                  llmRunner,
+                  job: { priority: "idle_only", dedupKey: `L1S:${g.sessionId || sessionKey}:${from}_${windowEnd}` },
+                },
+                logger,
+                instanceId: getInstanceId?.(),
+                storage,
+              });
+              result.stored += r.storedCount;
+            }
+            result.gapsExtracted += 1;
+            logger.info(`${TAG} [scavenger] ${sessionKey}: re-extracted ${from}..${windowEnd}`);
+          }
+          from = windowEnd;
+          state.sessions[sessionKey] = { scavenged_until: from, last_run: new Date().toISOString() };
+        }
+        state.sessions[sessionKey] = { scavenged_until: from, last_run: new Date().toISOString() };
+      }
+    } catch (err) {
+      result.error = err instanceof Error ? err.message : String(err);
+      logger.warn(`${TAG} [scavenger] stopped: ${result.error}`);
+    } finally {
+      await saveScavengerState(pluginDataDir, state, storage);
+    }
+    return result;
   };
 }
 
@@ -1046,7 +1164,7 @@ export function createL3Runner(opts: {
 
       if (!genResult) {
         logger.info(`${TAG} [L3] Persona generation skipped (no changes, scope=${scope})`);
-        await checkpoint.markPersonaGenerated(personaMarker);
+        await checkpoint.markPersonaGenerated(personaMarker, { coveredUntil: generator.coveredUntil });
         continue;
       }
 
@@ -1061,7 +1179,7 @@ export function createL3Runner(opts: {
       }
       if (changedProfiles.length === 0) {
         logger.debug?.(`${TAG} [L3] No changed Persona profiles, skipping generation provenance`);
-        await checkpoint.markPersonaGenerated(personaMarker);
+        await checkpoint.markPersonaGenerated(personaMarker, { coveredUntil: generator.coveredUntil });
         generatedAny = true;
         continue;
       }
@@ -1105,7 +1223,7 @@ export function createL3Runner(opts: {
           : undefined,
       });
 
-      await checkpoint.markPersonaGenerated(personaMarker);
+      await checkpoint.markPersonaGenerated(personaMarker, { coveredUntil: generator.coveredUntil });
       generatedAny = true;
       logger.info(`${TAG} [L3] Persona generation succeeded (scope=${scope})`);
     }
