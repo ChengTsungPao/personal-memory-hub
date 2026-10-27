@@ -28,8 +28,20 @@ export function useChatMemory(props: { activeTeamId?: string | null } = {}) {
   const currentUserId = auth?.user_id ?? '';
   const activeTeamId = props.activeTeamId ?? storeActiveTeamId;
   const { agents: teamAgents } = useAgents(activeTeamId);
+  // Chat memory is organised by repo: the agents to pick are the repo agents and New-chat (the
+  // sessions with no repo), each holding one memory block per session. Other agents (the
+  // default agent, agents from before session blocks) hold no session blocks.
   const ownedTeamAgents = useMemo(
-    () => teamAgents.filter((a) => a.owner_user_id === currentUserId),
+    () =>
+      teamAgents.filter((a) => {
+        if (a.owner_user_id !== currentUserId) return false;
+        try {
+          const kind = JSON.parse(a.metadata_json || '{}')?.kind;
+          return kind === 'repo' || kind === 'new-chat';
+        } catch {
+          return false;
+        }
+      }),
     [teamAgents, currentUserId],
   );
 
