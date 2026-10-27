@@ -57,6 +57,15 @@ test("an empty repo (a placeholder, e.g. an Orca project) is not a repo", () => 
   assert.deepEqual(findRepos(path.join(root, "workspace")).map((r) => r.name), ["real"]);
 });
 
+test("a repo is named after its origin remote, not the folder (Orca workspaces)", () => {
+  const root = tmp();
+  const project = makeRepo(path.join(root, "Agent-Control"));
+  git(project, "remote", "add", "origin", "https://github.com/someone/ai-usage-monitor.git");
+  git(project, "worktree", "add", "-q", path.join(root, "random-workspace"));
+  assert.equal(repoAt(path.join(root, "random-workspace")).name, "ai-usage-monitor");
+  assert.equal(repoAt(makeRepo(path.join(root, "no-remote"))).name, "no-remote");
+});
+
 test("a subfolder and a worktree of a repo share its hash and name", () => {
   const root = tmp();
   const a = makeRepo(path.join(root, "a"));
