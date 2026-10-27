@@ -30,7 +30,7 @@ import '../styles/chat-memory-panel.css';
  * A repo agent or New-chat by name. Two different repos can share a name (forks, same folder
  * name): only then add the repo's short root commit hash.
  */
-function agentLabel(
+function repoAgentLabel(
   agent: { name: string; metadata_json?: string },
   all: Array<{ name: string }>,
 ): string {
@@ -173,7 +173,7 @@ export default function ChatMemoryPanel(
               placeholder={t('memory.noAgent')}
               options={ownedTeamAgents.map((agent) => ({
                 value: agent.agent_id,
-                text: agentLabel(agent, ownedTeamAgents),
+                text: repoAgentLabel(agent, ownedTeamAgents),
               }))}
             />
           ) : undefined
