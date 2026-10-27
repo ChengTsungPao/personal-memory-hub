@@ -26,6 +26,23 @@ import { UserBadge } from '@/components/asset/UserBadge';
 import { useChatMemory } from '../hooks/useChatMemory';
 import '../styles/chat-memory-panel.css';
 
+/**
+ * A repo agent or New-chat by name. Two different repos can share a name (forks, same folder
+ * name): only then add the repo's short root commit hash.
+ */
+function agentLabel(
+  agent: { name: string; metadata_json?: string },
+  all: Array<{ name: string }>,
+): string {
+  if (all.filter((a) => a.name === agent.name).length < 2) return agent.name;
+  try {
+    const root = JSON.parse(agent.metadata_json || '{}')?.root_commit;
+    return root ? `${agent.name}（${String(root).slice(0, 7)}）` : agent.name;
+  } catch {
+    return agent.name;
+  }
+}
+
 export default function ChatMemoryPanel(
   props: {
     currentUser?: string;
@@ -156,7 +173,7 @@ export default function ChatMemoryPanel(
               placeholder={t('memory.noAgent')}
               options={ownedTeamAgents.map((agent) => ({
                 value: agent.agent_id,
-                text: `${agent.name}（${agent.agent_id}）`,
+                text: agentLabel(agent, ownedTeamAgents),
               }))}
             />
           ) : undefined
