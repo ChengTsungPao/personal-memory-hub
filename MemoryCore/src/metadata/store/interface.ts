@@ -172,6 +172,10 @@ export interface IMetadataStore {
    * 是全量替换会覆盖那些绑定，因此需要一个 append 语义的操作。
    */
   addAgentFixedAsset(agentId: string, binding: FixedAssetBindingInput): MaybePromise<void>;
+  /** 删除一条 agent 绑定，保留该 agent 的其他绑定；不存在时 no-op（幂等）。 */
+  removeAgentFixedAsset(agentId: string, assetId: string): MaybePromise<void>;
+  /** 某资产被哪些 agent 绑定（不分页，按 created_at 升序）。 */
+  listAssetBindings(assetId: string): MaybePromise<FixedAssetBindingEntity[]>;
   listAgentFixedAssets(
     agentId: string,
     pagination?: PaginationParams | null,

@@ -24,6 +24,21 @@ export function buildChatMemoryAssetId(teamId: string, agentId: string): string 
 }
 
 /**
+ * Session agents: Claude Code gives every session its own hidden agent, whose chat_memory is that
+ * session's memory block. The block is then bound to the repo agents (or New-chat) the session
+ * belongs to. Marked by `{"kind":"session"}` in the agent's metadata_json.
+ */
+export const SESSION_AGENT_KIND = "session";
+
+export function isSessionAgent(agent: { metadata_json?: string | null }): boolean {
+  try {
+    return JSON.parse(agent.metadata_json || "{}")?.kind === SESSION_AGENT_KIND;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * 在候选 agent 列表里找出与 assetId 匹配的那个 agent_id。
  *
  * 用正向拼接比对而非切分字符串，所以 team_id / agent_id 含 `-` 时依然正确。

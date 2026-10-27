@@ -278,6 +278,17 @@ const routeTable: Record<string, Handler> = {
     await s.setAgentFixedAssetsForCaller(d.agent_id, d.bindings, c);
     return OK;
   }),
+  [`${V3_PREFIX}/agent-fixed-asset/add`]: bind(S.fixedAssetAddSchema, async (d, c, s) => {
+    await s.addAgentFixedAssetForCaller(d.agent_id, d.binding, c);
+    return OK;
+  }),
+  [`${V3_PREFIX}/agent-fixed-asset/remove`]: bind(S.fixedAssetRemoveSchema, async (d, c, s) => {
+    await s.removeAgentFixedAssetForCaller(d.agent_id, d.asset_id, c);
+    return OK;
+  }),
+  [`${V3_PREFIX}/agent-fixed-asset/bindings-of-asset`]: bind(S.fixedAssetBindingsOfAssetSchema, async (d, _c, s) => ({
+    items: await s.listAssetBindings(d.asset_id),
+  })),
   [`${V3_PREFIX}/agent-fixed-asset/list`]: bind(S.fixedAssetListSchema, (d, _c, s) =>
     s.listAgentFixedAssets(d.agent_id, resolvePagination(d)),
   ),

@@ -1187,6 +1187,17 @@ export class MongoMetadataStore implements IMetadataStore {
     );
   }
 
+  async removeAgentFixedAsset(agentId: string, assetId: string): Promise<void> {
+    await this.col("meta_agent_fixed_assets").deleteOne({ agent_id: agentId, asset_id: assetId });
+  }
+
+  async listAssetBindings(assetId: string): Promise<FixedAssetBindingEntity[]> {
+    return this.col<FixedAssetBindingEntity>("meta_agent_fixed_assets")
+      .find({ asset_id: assetId } as Document, PROJECT_NO_ID)
+      .sort({ created_at: 1 })
+      .toArray() as Promise<FixedAssetBindingEntity[]>;
+  }
+
   async getAgentFixedAsset(agentId: string, assetId: string): Promise<FixedAssetBindingEntity | null> {
     return this.col<FixedAssetBindingEntity>("meta_agent_fixed_assets").findOne(
       { agent_id: agentId, asset_id: assetId } as Document,

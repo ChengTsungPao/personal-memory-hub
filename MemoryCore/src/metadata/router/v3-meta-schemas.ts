@@ -328,6 +328,9 @@ export const fixedAssetSetSchema = z.object({
   agent_id: nonEmpty,
   bindings: z.array(fixedBinding),
 });
+export const fixedAssetAddSchema = z.object({ agent_id: nonEmpty, binding: fixedBinding });
+export const fixedAssetRemoveSchema = z.object({ agent_id: nonEmpty, asset_id: nonEmpty });
+export const fixedAssetBindingsOfAssetSchema = z.object({ asset_id: nonEmpty });
 export const fixedAssetListSchema = z.object({ agent_id: nonEmpty }).merge(paginationInputSchema);
 export const fixedAssetListWithDetailSchema = z.object({
   agent_id: nonEmpty,
@@ -506,6 +509,9 @@ export const V3_SCHEMAS = {
   "/v3/meta/asset/list-accessible": assetListAccessibleSchema,
   "/v3/meta/asset/touch-usage": assetTouchUsageSchema,
   "/v3/meta/agent-fixed-asset/set": fixedAssetSetSchema,
+  "/v3/meta/agent-fixed-asset/add": fixedAssetAddSchema,
+  "/v3/meta/agent-fixed-asset/remove": fixedAssetRemoveSchema,
+  "/v3/meta/agent-fixed-asset/bindings-of-asset": fixedAssetBindingsOfAssetSchema,
   "/v3/meta/agent-fixed-asset/list": fixedAssetListSchema,
   "/v3/meta/agent-fixed-asset/list-with-detail": fixedAssetListWithDetailSchema,
   "/v3/meta/agent-fixed-asset/summary-by-agents": fixedAssetSummaryByAgentsSchema,
