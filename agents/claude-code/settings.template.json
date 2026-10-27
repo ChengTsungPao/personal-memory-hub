@@ -6,11 +6,10 @@
     "Every TDAI_* value here is non-secret routing/identity config; the",
     "gateway token, if your deployment sets one, belongs in your shell",
     "environment rather than this file.",
-    "TDAI_AGENT_ID is deliberately omitted: leaving it unset lets each hook",
-    "call auto-derive it from the project's git identity (see README.md",
-    "'Memory isolation: why agent_id is per-project, not per-session').",
-    "Only add it back here if you want every project to share one fixed",
-    "agent_id."
+    "TDAI_AGENT_ID is deliberately omitted: leaving it unset gives every",
+    "session its own memory block, bound to the repos of its folder (see",
+    "README.md 'Memory isolation'). Only add it back here if you want every",
+    "session to write to one fixed agent."
   ],
 
   "env": {
@@ -28,8 +27,20 @@
             "type": "command",
             "command": "node",
             "args": ["ABSOLUTE_PATH_TO_REPO/agents/claude-code/hooks/memory-recall.mjs"],
-            "timeout": 10,
+            "timeout": 20,
             "statusMessage": "Loading long-term memory..."
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": ["ABSOLUTE_PATH_TO_REPO/agents/claude-code/hooks/memory-command.mjs"],
+            "timeout": 20
           }
         ]
       }

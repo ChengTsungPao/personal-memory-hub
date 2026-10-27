@@ -8,8 +8,9 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import os from "node:os";
-import { loadConfig, debugLog } from "../../claude-code/lib/config.mjs";
+import { debugLog } from "../../claude-code/lib/config.mjs";
 import { CoreClient } from "../../claude-code/lib/core-client.mjs";
+import { openSession } from "../../claude-code/lib/session.mjs";
 import { parseTurns } from "./capture-lib.mjs";
 
 async function readStdin() {
@@ -55,11 +56,13 @@ async function main() {
   try { payload = JSON.parse(raw); } catch { return; }
 
   const sessionId = payload.session_id ?? payload.thread_id;
-  const cfg = await loadConfig(payload.cwd);
+  // This session's own memory block, bound to its repos (claude-code/lib/session.mjs).
+  const { cfg, skip } = await openSession(sessionId, payload.cwd);
   const transcriptPath = payload.transcript_path ?? findTranscript(sessionId);
   if (!sessionId || !transcriptPath || !fs.existsSync(transcriptPath)) {
     return debugLog(cfg, "payload missing session_id or Codex transcript");
   }
+  if (skip) return debugLog(cfg, "no admin key: cannot create this session's memory block");
 
   const lines = fs.readFileSync(transcriptPath, "utf8").split("\n");
   const { messages, resume } = parseTurns(lines, readCursor(cfg.stateDir, sessionId));

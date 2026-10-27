@@ -29,6 +29,10 @@ Antigravity ──SessionStart──▶ hooks/memory-recall.mjs  ─▶ MemoryCo
 | transcript | `type: user/assistant`, uuid cursor | `USER_INPUT` / `PLANNER_RESPONSE`, `step_index` cursor |
 | env | settings.json `env` | none - `lib/env.mjs` reads `TDAI_*` from the `memorycore` entry in `mcp_config.json` |
 | cursors | `~/.memory-tdai/claude-code` | `~/.memory-tdai/antigravity` |
+| memory block | one per session, bound to the repos of `cwd` | the same, per `conversationId`, for `workspacePaths[0]` |
+| `mem: repo` command, printed binding | yes | no (no matching hook output) |
+
+Memory blocks: see "Memory isolation" in [`../claude-code/README.md`](../claude-code/README.md).
 
 Debug: set `TDAI_DEBUG=1`. Every hook exits 0 and prints valid JSON even when the
 backend is down, so a session is never blocked.

@@ -206,7 +206,7 @@ async function resolveAgentId(cfg, projectKey, projectName) {
  *   process.cwd() by default). Used only to derive agent_id when
  *   TDAI_AGENT_ID isn't set explicitly.
  */
-export async function loadConfig(cwd = process.cwd()) {
+export async function loadConfig(cwd = process.cwd(), { projectAgent = true } = {}) {
   const endpoint = (process.env.TDAI_ENDPOINT ?? "http://127.0.0.1:8420").replace(/\/+$/, "");
   const knowledgeEndpoint = (process.env.TDAI_KNOWLEDGE_ENDPOINT ?? "http://127.0.0.1:8424").replace(/\/+$/, "");
   const stateDir = process.env.TDAI_STATE_DIR ?? path.join(os.homedir(), ".memory-tdai", "claude-code");
@@ -254,6 +254,9 @@ export async function loadConfig(cwd = process.cwd()) {
 
   if (process.env.TDAI_AGENT_ID) {
     cfg.agentId = process.env.TDAI_AGENT_ID;
+  } else if (!projectAgent) {
+    // The hooks bind each session to its own memory block (lib/session.mjs) and set agentId then.
+    cfg.agentId = "default";
   } else {
     const { key, name } = deriveProjectKey(cwd);
     cfg.agentId = (await resolveAgentId(cfg, key, name)) ?? "default";
