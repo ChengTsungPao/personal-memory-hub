@@ -53,7 +53,7 @@
   --heavy: var(--tea-color-border-secondary-default);
   /* 等宽字体栈（代码/密钥/ID 展示统一走此 token） */
   --font-mono: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
-  color-scheme: light;
+  color-scheme: dark;
 }
 
 /* 映射到 Tailwind 可用的 bg-* / text-* / border-* */

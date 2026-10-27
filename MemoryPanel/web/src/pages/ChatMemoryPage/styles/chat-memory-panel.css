@@ -627,8 +627,8 @@
   display: inline-flex;
   padding: 2px;
   border-radius: 6px;
-  background: var(--tea-color-bg-secondary, #f2f3f5);
-  border: 1px solid var(--tea-color-border, #e5e6eb);
+  background: var(--tea-color-bg-secondary-default);
+  border: 1px solid var(--tea-color-border-primary-default);
 }
 
 ._memory-detail-mode-btn {
@@ -653,8 +653,8 @@
 }
 
 ._memory-detail-mode-btn--active {
-  background: var(--tea-color-bg-primary, #fff);
-  color: var(--tea-color-primary, #0052d9);
+  background: var(--tea-color-bg-primary-default);
+  color: var(--tea-color-text-brand-default);
   font-weight: 500;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
 }
