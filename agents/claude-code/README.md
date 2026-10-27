@@ -286,8 +286,10 @@ write to.
 Setting `TDAI_AGENT_ID` turns all of this off: every session then writes to that one agent.
 
 Codex (`agents/codex`) and Antigravity (`agents/antigravity`) use the same `lib/session.mjs`, so
-their sessions get blocks bound the same way; they have no `mem: repo` command and do not print the
-binding.
+their sessions get blocks bound the same way. Codex has the same hook contract as Claude Code: its
+Stop hook prints the binding, and `hooks/memory-command.mjs` serves `mem: repo` there too (registered
+as a Codex `UserPromptSubmit` hook). Antigravity has no hook on a submitted prompt and no output
+shown to the user, so it has neither.
 
 ### 5. Register the hooks
 

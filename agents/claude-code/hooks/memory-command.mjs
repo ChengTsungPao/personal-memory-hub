@@ -9,6 +9,8 @@
  *
  * A matching prompt is answered here and not sent to the model ("decision":"block" shows the
  * reason to the user). Any other prompt passes through untouched, and every failure exits 0.
+ * Claude Code and Codex share this UserPromptSubmit contract ({session_id, cwd, prompt} in,
+ * {decision, reason} out), so both register this script.
  */
 
 import { openSession, editRepos, describeBinding } from "../lib/session.mjs";
