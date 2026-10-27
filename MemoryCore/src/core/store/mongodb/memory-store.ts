@@ -753,13 +753,23 @@ export class MongoMemoryStore implements IMemoryStore {
     if (!teamId || !fromAgentId || !toAgentId || fromAgentId === toAgentId) {
       throw new Error(`${TAG} moveMemoryContent requires a team and two different agent ids`);
     }
-    const match = { team_id: teamId, agent_id: fromAgentId };
+    const match: Record<string, string> = { team_id: teamId, agent_id: fromAgentId };
+    if (args.sessionId !== undefined) match.session_id = args.sessionId;
     const set = { $set: { agent_id: toAgentId } };
     const [l0Res, l1Res] = await Promise.all([
       (await this.coll(COLLECTIONS.L0)).updateMany(match as never, set as never),
       (await this.coll(COLLECTIONS.L1)).updateMany(match as never, set as never),
     ]);
     return { l0Moved: l0Res.modifiedCount, l1Moved: l1Res.modifiedCount };
+  }
+
+  async listContentSessionIds(teamId: string, agentId: string): Promise<string[]> {
+    const match = { team_id: teamId, agent_id: agentId };
+    const [l0, l1] = await Promise.all([
+      (await this.coll(COLLECTIONS.L0)).distinct("session_id", match as never),
+      (await this.coll(COLLECTIONS.L1)).distinct("session_id", match as never),
+    ]);
+    return [...new Set([...l0, ...l1])].filter((id): id is string => typeof id === "string" && id.length > 0);
   }
 
   // ════════════════════════════════════════════════════════

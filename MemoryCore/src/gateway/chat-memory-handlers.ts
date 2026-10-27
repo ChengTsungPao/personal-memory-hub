@@ -32,7 +32,7 @@ import { StoragePaths } from "../core/storage/types.js";
 import { createScopedStorageAdapter, scopeProfileStorageView, type StorageAdapter } from "../core/storage/adapter.js";
 import { buildProfileIsolationScope } from "../core/profile/profile-scope.js";
 import { MetadataError, type MetadataService } from "../metadata/service/metadata-service.js";
-import { buildChatMemoryAssetId } from "../metadata/utils/chat-memory-asset.js";
+import { buildChatMemoryAssetId, isSessionAgent } from "../metadata/utils/chat-memory-asset.js";
 import type { Logger } from "../core/types.js";
 
 const TAG = "[chat-memory-handlers]";
@@ -543,6 +543,85 @@ async function handleChatMemoryMerge(
 }
 
 // ═════════════════════════════════════════════════════════════
+//  Split per session (migrating old per-project blocks)
+// ═════════════════════════════════════════════════════════════
+
+export const chatMemorySplitRequestSchema = z.object({
+  memory_id: z.string().trim().min(1),
+  /** List what would move where, without moving anything. */
+  dry_run: z.boolean().optional(),
+});
+
+export interface ChatMemorySplitItem {
+  session_id: string;
+  /** The session block the rows go to. Empty on a dry run when it would be created. */
+  memory_id: string;
+  created: boolean;
+  l0_moved: number;
+  l1_moved: number;
+}
+
+/**
+ * `/v3/chat-memory/split-sessions`: move every session's L0 and L1 out of an old per-project block
+ * into that session's own block. A session that already has a block (made by the hooks, or merged
+ * into one) goes there; otherwise a new session block bound to New-chat is made. L2/L3 cannot be
+ * split per session and stay where they are. Idempotent: a split block has nothing left to move.
+ */
+async function handleChatMemorySplit(
+  body: unknown,
+  auth: V2AuthContext,
+  requestId: string,
+  depsRaw: unknown,
+): Promise<ApiResponseEnvelope> {
+  const deps = depsRaw as ChatMemoryRouterDeps;
+  const parsed = chatMemorySplitRequestSchema.safeParse(body);
+  if (!parsed.success) return errorEnvelope(400, formatZodErr(parsed.error), requestId);
+
+  const store = deps.getStore();
+  if (!store) return errorEnvelope(503, "Store not available", requestId);
+  if (typeof store.moveMemoryContent !== "function" || typeof store.listContentSessionIds !== "function") {
+    return errorEnvelope(503, "Store does not support splitting chat memory", requestId);
+  }
+  if (!deps.getMetadataService) return errorEnvelope(503, "Metadata service not available", requestId);
+
+  try {
+    const metaSvc = await deps.getMetadataService(auth.serviceId);
+    const [target] = await metaSvc.resolveChatMemoryTargets([parsed.data.memory_id]);
+    const source = await metaSvc.getAgentById(target.agent_id);
+    if (!source) return errorEnvelope(404, "agent not found", requestId);
+    if (isSessionAgent(source)) return errorEnvelope(400, "a session memory block is already one session", requestId);
+
+    const items: ChatMemorySplitItem[] = [];
+    for (const sessionId of await store.listContentSessionIds(target.team_id, source.agent_id)) {
+      if (parsed.data.dry_run) {
+        items.push({ session_id: sessionId, memory_id: "", created: false, l0_moved: 0, l1_moved: 0 });
+        continue;
+      }
+      const { agent, created } = await metaSvc.ensureSessionAgent(target.team_id, sessionId, source.owner_user_id);
+      const moved = await store.moveMemoryContent({
+        teamId: target.team_id,
+        fromAgentId: source.agent_id,
+        toAgentId: agent.agent_id,
+        sessionId,
+      });
+      items.push({
+        session_id: sessionId,
+        memory_id: buildChatMemoryAssetId(target.team_id, agent.agent_id),
+        created,
+        l0_moved: moved.l0Moved,
+        l1_moved: moved.l1Moved,
+      });
+    }
+    deps.logger.info(`${TAG} split ${source.agent_id} into ${items.length} session block(s)${parsed.data.dry_run ? " (dry run)" : ""}`);
+    return successEnvelope<{ items: ChatMemorySplitItem[] }>({ items }, requestId);
+  } catch (err) {
+    if (err instanceof MetadataError) return errorEnvelope(metadataErrorCode(err.code), err.message, requestId);
+    deps.logger.error(`${TAG} split failed: ${err instanceof Error ? err.message : String(err)}`);
+    return errorEnvelope(500, "split failed", requestId);
+  }
+}
+
+// ═════════════════════════════════════════════════════════════
 //  Route table
 // ═════════════════════════════════════════════════════════════
 
@@ -557,7 +636,8 @@ export function makeChatMemoryRouteTable(): Record<string, RouteHandler> {
   return {
     "/v3/chat-memory/clear": handleChatMemoryClear,
     "/v3/chat-memory/merge": handleChatMemoryMerge,
+    "/v3/chat-memory/split-sessions": handleChatMemorySplit,
   };
 }
 
-export { handleChatMemoryClear, handleChatMemoryMerge };
+export { handleChatMemoryClear, handleChatMemoryMerge, handleChatMemorySplit };

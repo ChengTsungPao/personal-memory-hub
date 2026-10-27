@@ -2190,15 +2190,58 @@ export class MetadataService {
    * 加硬上限防御异常大team 把内存打满。
    */
   private async listAllAgentIdsByTeam(teamId: string): Promise<string[]> {
+    return (await this.listAllAgentsByTeam(teamId)).map((a) => a.agent_id);
+  }
+
+  private async listAllAgentsByTeam(teamId: string): Promise<AgentEntity[]> {
     const PAGE = 100;
     const MAX_AGENTS = 10_000;
-    const ids: string[] = [];
+    const agents: AgentEntity[] = [];
     for (let offset = 0; offset < MAX_AGENTS; offset += PAGE) {
       const page = await this.store.listAgentsByTeam(teamId, { limit: PAGE, offset });
-      for (const agent of page.items) ids.push(agent.agent_id);
+      agents.push(...page.items);
       if (page.items.length < PAGE) break;
     }
-    return ids;
+    return agents;
+  }
+
+  /**
+   * The active session agent holding `sessionId` (as its own session or a merged one), or a new
+   * one bound to New-chat, as the Claude Code hooks would make it (agents/claude-code/lib/session.mjs).
+   * Used to split an old per-project block into one block per session.
+   */
+  async ensureSessionAgent(
+    teamId: string,
+    sessionId: string,
+    ownerUserId: string,
+  ): Promise<{ agent: AgentEntity; created: boolean }> {
+    const agents = (await this.listAllAgentsByTeam(teamId)).filter((a) => a.status === "active");
+    const found = agents.find((a) => {
+      const m = agentMeta(a);
+      return m.kind === "session" && (m.session_id === sessionId || (m.merged_sessions ?? []).includes(sessionId));
+    });
+    if (found) return { agent: found, created: false };
+
+    const newChat =
+      agents.find((a) => agentMeta(a).kind === "new-chat") ??
+      (await this.createAgent({
+        team_id: teamId,
+        owner_user_id: ownerUserId,
+        name: "New-chat",
+        metadata_json: JSON.stringify({ kind: "new-chat" }),
+      }));
+    const agent = await this.createAgent({
+      team_id: teamId,
+      owner_user_id: ownerUserId,
+      name: `New-chat · ${sessionId.slice(0, 8)}`,
+      metadata_json: JSON.stringify({ kind: "session", session_id: sessionId, cwd: "", repos: [], added: [], removed: [] }),
+    });
+    await this.addAgentFixedAsset(newChat.agent_id, {
+      asset_id: buildChatMemoryAssetId(teamId, agent.agent_id),
+      asset_type: "chat_memory",
+      created_by: ownerUserId,
+    });
+    return { agent, created: true };
   }
 
   async setAgentFixedAssetsForCaller(
