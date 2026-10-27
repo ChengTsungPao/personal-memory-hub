@@ -314,7 +314,9 @@ export class StandaloneLLMRunner implements LLMRunner {
             fetch: createAsyncJobFetch({
               priority: params.priority ?? "normal",
               dedupKey: params.dedupKey,
-              timeoutMs,
+              // Callers' per-call timeouts (e.g. L1's 180 s) bound a socket that also waited in the queue;
+              // a job's timeout counts generation only, so the configured llm.timeoutMs may be longer.
+              timeoutMs: Math.max(timeoutMs, this.config.timeoutMs ?? 0),
               signal: params.abortSignal,
               logger: this.logger,
             }),
