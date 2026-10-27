@@ -19,6 +19,7 @@ import { WikiDetailView } from './wiki-detail-view';
 import { ConnectorsModal } from './ConnectorsModal';
 import '@/components/asset/asset-card.css';
 import '../styles/wiki-sources-panel.css';
+import { nameLabel } from '@/lib/memory-agents';
 
 const { scrollable } = Table.addons;
 
@@ -100,14 +101,13 @@ export default function WikiSourcesPanel() {
           scopeTab === 'fixed' ? (
             <Select
               appearance="button"
-              matchButtonWidth
               value={agentFilter}
               onChange={setAgentFilter}
               disabled={teamAgents.length === 0}
               placeholder={t('wiki.noAgentPlaceholder')}
               options={teamAgents.map((agent) => ({
                 value: agent.id,
-                text: `${agent.name}（${agent.id}）`,
+                text: nameLabel(agent, teamAgents),
               }))}
             />
           ) : undefined

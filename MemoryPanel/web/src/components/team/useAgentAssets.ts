@@ -9,6 +9,7 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
 import { chatMemoryApi } from '@/lib/teamApi';
 import { getPanelSession } from '@/lib/panelSession';
+import { isRepoOrNewChatAgent } from '@/lib/memory-agents';
 import type { Agent as StoreAgent } from '@/services';
 import {
   MAX_IMPORTED_CHAT_MEMORIES,
@@ -98,7 +99,17 @@ export function useAgentMountedCounts(
     let cancelled = false;
     loadAgentOverview(teamId, agents.map((agent) => agent.agent_id))
       .then((overview) => {
-        if (!cancelled) setCounts(overview.counts);
+        if (cancelled) return;
+        // A repo agent's or New-chat's own built-in block stays empty and is not listed on
+        // Chat_Memory; count only the session blocks bound to it, as Chat_Memory lists them.
+        const adjusted = { ...overview.counts };
+        for (const agent of agents) {
+          const c = adjusted[agent.agent_id];
+          if (c && isRepoOrNewChatAgent(agent)) {
+            adjusted[agent.agent_id] = { ...c, chat_memory: Math.max(0, c.chat_memory - 1) };
+          }
+        }
+        setCounts(adjusted);
       })
       .catch(() => {
         if (!cancelled) setCounts({});

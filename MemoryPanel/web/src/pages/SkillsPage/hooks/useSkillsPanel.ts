@@ -5,6 +5,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { assetsApi, agentsApi, type Asset } from '@/lib/teamApi';
+import { isRepoOrNewChatAgent } from '@/lib/memory-agents';
 import {
   listSkills,
   getSkill,
@@ -63,7 +64,7 @@ export function useSkillsPanel() {
         setAgentNameMap(Object.fromEntries(agents.map((a) => [a.agent_id, a.name])));
         setTeamAgents(
           agents
-            .filter((a) => !!myUserId && a.owner_user_id === myUserId)
+            .filter((a) => !!myUserId && a.owner_user_id === myUserId && isRepoOrNewChatAgent(a))
             .map((a) => ({ id: a.agent_id, name: a.name })),
         );
       })

@@ -5,7 +5,7 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { bindSession, editRepos, findRepos, repoAt } from "./session.mjs";
+import { bindSession, browserUrl, editRepos, findRepos, repoAt } from "./session.mjs";
 
 const git = (cwd, ...args) => execFileSync("git", args, { cwd, stdio: "pipe" }).toString().trim();
 
@@ -197,11 +197,12 @@ test("mem: repo rm keeps a repo out after the next scan, and add brings it back"
 
 test("mem: repo rm by hash needs 7+ characters, so a short name never matches a hash", async () => {
   const root = tmp();
-  const a = repoAt(makeRepo(path.join(root, "a")));
+  // Named so that no single hex character equals the name.
+  const a = repoAt(makeRepo(path.join(root, "repo-x")));
   const { sessionAgentId } = await bindSession(cfg, "sess-6", root);
 
   await assert.rejects(editRepos(cfg, "sess-6", root, "rm", a.hash.slice(0, 1)), /沒有綁定/);
-  assert.deepEqual(boundTo(sessionAgentId), ["a"]);
+  assert.deepEqual(boundTo(sessionAgentId), ["repo-x"]);
   await editRepos(cfg, "sess-6", root, "rm", a.hash.slice(0, 7));
   assert.deepEqual(boundTo(sessionAgentId), ["New-chat"]);
 });
@@ -245,6 +246,18 @@ test("a block is named after its repos and renamed when they change", async () =
   assert.equal(agents.get(sessionAgentId).name, "a + b · sess-9ab");
 });
 
+test("a name set by hand is kept when the repos change", async () => {
+  const root = tmp();
+  const { sessionAgentId } = await bindSession(cfg, "sess-11abcdef", root);
+  const block = agents.get(sessionAgentId);
+  block.name = "Currently · sess-11a";
+  block.metadata_json = JSON.stringify({ ...JSON.parse(block.metadata_json), custom_name: true });
+  makeRepo(path.join(root, "a"));
+  await bindSession(cfg, "sess-11abcdef", root);
+  assert.equal(agents.get(sessionAgentId).name, "Currently · sess-11a");
+  assert.deepEqual(boundTo(sessionAgentId), ["a"]);
+});
+
 test("the New-chat agent made before session blocks is adopted, not duplicated", async () => {
   const legacy = await (await fetch("http://core/v3/meta/agent/create", { method: "POST", body: JSON.stringify({ name: "New-chat" }) })).json();
   const { targets } = await bindSession(cfg, "sess-10", tmp());
@@ -265,4 +278,21 @@ test("a session merged into another block writes there and leaves that block's r
   assert.ok(merged.mergedInto);
   assert.deepEqual(boundTo(owner.sessionAgentId), ["a"]);
   await assert.rejects(editRepos(cfg, "sess-merged", tmp(), "add", a), /已合併/);
+});
+
+test("a remote becomes a browser link, without credentials", () => {
+  assert.equal(browserUrl("git@github.com:o/r.git"), "https://github.com/o/r");
+  assert.equal(browserUrl("https://github.com/o/r.git"), "https://github.com/o/r");
+  assert.equal(browserUrl("https://user:token@github.com/o/r.git/"), "https://github.com/o/r");
+  assert.equal(browserUrl("ssh://git@github.com:22/o/r.git"), "https://github.com/o/r");
+  assert.equal(browserUrl("C:/local/repo"), "");
+  assert.equal(browserUrl(""), "");
+});
+
+test("the repo agent keeps the repo's link", async () => {
+  const root = tmp();
+  const a = makeRepo(path.join(root, "a"));
+  git(a, "remote", "add", "origin", "git@github.com:someone/a-repo.git");
+  const { targets } = await bindSession(cfg, "sess-12", a);
+  assert.equal(JSON.parse(agents.get(targets[0].agent_id).metadata_json).url, "https://github.com/someone/a-repo");
 });

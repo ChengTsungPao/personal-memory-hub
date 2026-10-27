@@ -4,6 +4,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { isRepoOrNewChatAgent } from '@/lib/memory-agents';
 import { useAgents, useTeams } from '@/services';
 import { readAuth } from '@/components/LoginGate';
 import { tea, confirmThenRun } from '@/lib/tea-bridge';
@@ -28,8 +29,9 @@ export function useChatMemory(props: { activeTeamId?: string | null } = {}) {
   const currentUserId = auth?.user_id ?? '';
   const activeTeamId = props.activeTeamId ?? storeActiveTeamId;
   const { agents: teamAgents } = useAgents(activeTeamId);
+  // The repo agents and New-chat (lib/memory-agents.ts), each holding one block per session.
   const ownedTeamAgents = useMemo(
-    () => teamAgents.filter((a) => a.owner_user_id === currentUserId),
+    () => teamAgents.filter((a) => a.owner_user_id === currentUserId && isRepoOrNewChatAgent(a)),
     [teamAgents, currentUserId],
   );
 
@@ -115,7 +117,10 @@ export function useChatMemory(props: { activeTeamId?: string | null } = {}) {
         res = await chatMemoryApi.teamAssets(activeTeamId);
       }
       if (seq !== fetchSeqRef.current) return; // 已被后续请求取代
-      const mapped: MemoryBlock[] = res.items.map((b) => ({
+      // A repo agent's or New-chat's own built-in block stays empty: its memory lives in the
+      // session blocks bound to it. Listing it only showed a block that cannot be removed.
+      const ownBlock = scopeTab === 'fixed' ? `chat_memory-${activeTeamId}-${agentFilter}` : '';
+      const mapped: MemoryBlock[] = res.items.filter((b) => b.id !== ownBlock).map((b) => ({
         id: b.id,
         title: b.title,
         summary: b.summary ?? '',

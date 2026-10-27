@@ -23,6 +23,7 @@ import {
 import { tea } from '@/lib/tea-bridge';
 import i18n from '@/i18n';
 import { seedDisplayNameCache } from '@/services/user-profile-store';
+import { isSessionAgent } from '@/lib/memory-agents';
 
 // 从 backendStore.ts re-import 纯函数（adapters / types），避免循环依赖
 import {
@@ -180,7 +181,9 @@ export const useBackendStore = create<BackendState>((set, get) => ({
         const backendAgents = await agentsApi.list(teamId);
         // 登出/清缓存后返回的旧会话结果：丢弃，不写入 store
         if (get().epoch !== epoch) return [];
-        const adapted = backendAgents.map((ba, i) => adaptAgent(ba, i));
+        // Session agents (one per Claude Code session) only hold that session's memory block,
+        // which is listed under its repo agent or New-chat; they are not agents to pick.
+        const adapted = backendAgents.filter((ba) => !isSessionAgent(ba)).map((ba, i) => adaptAgent(ba, i));
         set((s) => ({
           agentsByTeam: { ...s.agentsByTeam, [teamId]: adapted },
           agentsLoadedTeamIds: new Set(s.agentsLoadedTeamIds).add(teamId),

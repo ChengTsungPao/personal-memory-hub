@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 /**
  * Codex Stop hook: append the user-visible turns from the Codex JSONL session
- * to MemoryCore L0. This hook is deliberately fail-open.
+ * to this session's memory block, and print which repos the block belongs to.
+ * This hook is deliberately fail-open.
  */
 
 import fs from "node:fs";
@@ -10,7 +11,7 @@ import crypto from "node:crypto";
 import os from "node:os";
 import { debugLog } from "../../claude-code/lib/config.mjs";
 import { CoreClient } from "../../claude-code/lib/core-client.mjs";
-import { openSession } from "../../claude-code/lib/session.mjs";
+import { describeBinding, openSession } from "../../claude-code/lib/session.mjs";
 import { parseTurns } from "./capture-lib.mjs";
 
 async function readStdin() {
@@ -57,7 +58,7 @@ async function main() {
 
   const sessionId = payload.session_id ?? payload.thread_id;
   // This session's own memory block, bound to its repos (claude-code/lib/session.mjs).
-  const { cfg, skip } = await openSession(sessionId, payload.cwd);
+  const { cfg, binding, skip } = await openSession(sessionId, payload.cwd);
   const transcriptPath = payload.transcript_path ?? findTranscript(sessionId);
   if (!sessionId || !transcriptPath || !fs.existsSync(transcriptPath)) {
     return debugLog(cfg, "payload missing session_id or Codex transcript");
@@ -66,13 +67,18 @@ async function main() {
 
   const lines = fs.readFileSync(transcriptPath, "utf8").split("\n");
   const { messages, resume } = parseTurns(lines, readCursor(cfg.stateDir, sessionId));
-  if (!messages.length) return writeCursor(cfg.stateDir, sessionId, resume);
+  if (!messages.length) {
+    writeCursor(cfg.stateDir, sessionId, resume);
+  } else {
+    const client = new CoreClient({ ...cfg, timeoutMs: cfg.captureTimeoutMs });
+    const accepted = await client.addConversation(sessionId, messages);
+    debugLog(cfg, `captured ${accepted}/${messages.length} messages for ${sessionId}`);
+    // Nothing accepted: keep the cursor so the next Stop retries instead of dropping the turns.
+    if (accepted > 0) writeCursor(cfg.stateDir, sessionId, resume);
+  }
 
-  const client = new CoreClient({ ...cfg, timeoutMs: cfg.captureTimeoutMs });
-  const accepted = await client.addConversation(sessionId, messages);
-  debugLog(cfg, `captured ${accepted}/${messages.length} messages for ${sessionId}`);
-  // Nothing accepted: keep the cursor so the next Stop retries instead of dropping the turns.
-  if (accepted > 0) writeCursor(cfg.stateDir, sessionId, resume);
+  // Shown to the user (Codex Stop output `systemMessage`), as in Claude Code.
+  if (binding) process.stdout.write(JSON.stringify({ systemMessage: describeBinding(binding) }));
 }
 
 main().catch((err) => {
