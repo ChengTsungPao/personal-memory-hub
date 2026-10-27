@@ -35,7 +35,20 @@ describe("L1 job status for the panel", () => {
 
     expect((await handlePipelineL1Status({}, "rid", undefined)).data).toEqual({ enabled: false, slices: [] });
     const down = (async () => { throw new Error("ECONNREFUSED"); }) as unknown as typeof fetch;
-    expect((await handlePipelineL1Status({}, "rid", { baseUrl: "http://gw/v1", apiKey: "" }, down)).data)
+    expect((await handlePipelineL1Status({ session_ids: ["s"] }, "rid", { baseUrl: "http://gw/v1", apiKey: "" }, down)).data)
       .toMatchObject({ enabled: true, reachable: false, slices: [] });
+  });
+
+  it("names no session, gets no slices: never every session's (other agents' too)", async () => {
+    let asked = false;
+    const fetchImpl = (async () => {
+      asked = true;
+      return Response.json({ jobs: [{ id: "j", dedup_key: "L1:other:1_2:extract:x", status: "failed" }] });
+    }) as unknown as typeof fetch;
+    for (const body of [{}, { session_ids: [] }]) {
+      const r = await handlePipelineL1Status(body, "rid", { baseUrl: "http://gw/v1", apiKey: "" }, fetchImpl);
+      expect((r.data as any).slices).toEqual([]);
+    }
+    expect(asked).toBe(false);
   });
 });

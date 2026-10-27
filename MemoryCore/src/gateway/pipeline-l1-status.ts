@@ -9,7 +9,7 @@
  *   pending  queued or running at the gateway (🟡)
  *   failed   failed or suspended (dead letter), waiting to be resumed or picked up by the scavenger (🔴)
  *
- * Body: { session_ids?: string[] } — limits the answer to these sessions.
+ * Body: { session_ids: string[] } — the answer covers only these sessions (none named: no slices).
  */
 
 import type { ApiResponseEnvelope } from "./v2-schemas.js";
@@ -81,6 +81,8 @@ export async function handlePipelineL1Status(
   const sessionIds = new Set(
     Array.isArray(raw) ? raw.filter((s): s is string => typeof s === "string" && s.length > 0).slice(0, 500) : [],
   );
+  // no sessions named, nothing to show: never fall back to every session's slices (other agents' too)
+  if (sessionIds.size === 0) return ok({ enabled: true, reachable: true, slices: [] });
   const base = llmJobs.baseUrl.replace(/\/+$/, "");
   try {
     const r = await fetchImpl(`${base}/jobs?status=queued,running,suspended,failed&key_prefix=L1&limit=500`, {
