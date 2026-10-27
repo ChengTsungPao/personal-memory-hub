@@ -651,6 +651,22 @@ upsert 知识明细（幂等）。
 }
 ```
 
+### POST /v3/chat-memory/merge
+
+合并两个 session 记忆块（`metadata_json` 为 `{"kind":"session"}` 的 agent 的 chat_memory）。鉴权同 clear。
+
+```json
+{ "source_memory_id": "chat_memory-team-x-agt-a", "target_memory_id": "chat_memory-team-x-agt-b" }
+```
+
+- 只绑定到 New-chat（没有 repo agent）的记忆块可以和任意记忆块合并，并入对方；其他记忆块只有绑定的 repo agent 完全相同时才能合并，否则 400 `memory blocks of different repos cannot be merged`。
+- 被并入一方的 L0/L1 改归留下的一方（`moveMemoryContent`）；L2/L3 之后由 L1 重新生成。
+- 被并入的 session id 记到留下一方的 `merged_sessions`，该 session 之后的对话仍写入留下的一方；被并入的记忆块随其 session agent 归档删除。
+
+```json
+{ "memory_id": "chat_memory-team-x-agt-b", "merged_memory_id": "chat_memory-team-x-agt-a", "l0_moved": 12, "l1_moved": 3 }
+```
+
 ---
 
 ## 3.5 Memory-Prompt（7）

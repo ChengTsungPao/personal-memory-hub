@@ -30,12 +30,17 @@ export function buildChatMemoryAssetId(teamId: string, agentId: string): string 
  */
 export const SESSION_AGENT_KIND = "session";
 
-export function isSessionAgent(agent: { metadata_json?: string | null }): boolean {
+/** An agent's metadata_json as an object ({} when unset or not JSON). */
+export function agentMeta(agent: { metadata_json?: string | null }): Record<string, any> {
   try {
-    return JSON.parse(agent.metadata_json || "{}")?.kind === SESSION_AGENT_KIND;
+    return JSON.parse(agent.metadata_json || "{}") ?? {};
   } catch {
-    return false;
+    return {};
   }
+}
+
+export function isSessionAgent(agent: { metadata_json?: string | null }): boolean {
+  return agentMeta(agent).kind === SESSION_AGENT_KIND;
 }
 
 /**

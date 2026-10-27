@@ -55,6 +55,8 @@ import type {
   BatchDeleteResult,
   MemoryContentClearFilter,
   MemoryContentClearResult,
+  MemoryContentMoveArgs,
+  MemoryContentMoveResult,
   AuditEntry,
   AuditQueryFilter,
 } from "../types.js";
@@ -2654,6 +2656,37 @@ export class VectorStore implements IMemoryStore {
       }
     } catch (err) {
       this.logger?.warn(`[sqlite] clearMemoryContent failed: ${err instanceof Error ? err.message : String(err)}`);
+      throw err;
+    }
+  }
+
+  moveMemoryContent(args: MemoryContentMoveArgs): MemoryContentMoveResult {
+    const teamId = (args?.teamId ?? "").trim();
+    const from = (args?.fromAgentId ?? "").trim();
+    const to = (args?.toAgentId ?? "").trim();
+    if (!teamId || !from || !to || from === to) {
+      throw new Error("moveMemoryContent requires a team and two different non-empty agent ids");
+    }
+    if (this.degraded) return { l0Moved: 0, l1Moved: 0 };
+
+    const move = (table: string): number =>
+      Number(
+        (this.db.prepare(`UPDATE ${table} SET agent_id = ? WHERE team_id = ? AND agent_id = ?`).run(to, teamId, from) as any)
+          ?.changes ?? 0,
+      );
+    this.db.exec("BEGIN");
+    try {
+      const l0Moved = move("l0_conversations");
+      const l1Moved = move("l1_records");
+      if (this.ftsAvailable) {
+        for (const fts of ["l0_fts", "l1_fts"]) {
+          try { move(fts); } catch { /* fts may not exist */ }
+        }
+      }
+      this.db.exec("COMMIT");
+      return { l0Moved, l1Moved };
+    } catch (err) {
+      this.db.exec("ROLLBACK");
       throw err;
     }
   }
