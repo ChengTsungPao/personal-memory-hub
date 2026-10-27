@@ -252,3 +252,17 @@ test("the New-chat agent made before session blocks is adopted, not duplicated",
   assert.equal(JSON.parse(agents.get(legacy.data.agent_id).metadata_json).kind, "new-chat");
   assert.equal([...agents.values()].filter((a) => a.name === "New-chat").length, 1);
 });
+
+test("a session merged into another block writes there and leaves that block's repos alone", async () => {
+  const root = tmp();
+  const a = makeRepo(path.join(root, "a"));
+  const owner = await bindSession(cfg, "sess-owner", a);
+  const block = agents.get(owner.sessionAgentId);
+  block.metadata_json = JSON.stringify({ ...JSON.parse(block.metadata_json), merged_sessions: ["sess-merged"] });
+
+  const merged = await bindSession(cfg, "sess-merged", tmp()); // its own folder has no repo
+  assert.equal(merged.sessionAgentId, owner.sessionAgentId);
+  assert.ok(merged.mergedInto);
+  assert.deepEqual(boundTo(owner.sessionAgentId), ["a"]);
+  await assert.rejects(editRepos(cfg, "sess-merged", tmp(), "add", a), /已合併/);
+});

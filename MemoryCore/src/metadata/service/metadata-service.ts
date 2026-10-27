@@ -93,7 +93,7 @@ import type {
 } from "../types.js";
 import { formatListResult, paginateArray, resolvePagination, wrapPaginated, DEFAULT_PAGINATION } from "../pagination.js";
 import { generateId, ID_PREFIX } from "../utils/id-generator.js";
-import { buildChatMemoryAssetId, isSessionAgent, resolveChatMemoryAgentId } from "../utils/chat-memory-asset.js";
+import { agentMeta, buildChatMemoryAssetId, isSessionAgent, resolveChatMemoryAgentId } from "../utils/chat-memory-asset.js";
 
 // ── 默认 Agent / Team 常量 ──
 
@@ -2130,6 +2130,59 @@ export class MetadataService {
       targets.push({ asset_id: assetId, team_id: asset.team_id, agent_id: agentId });
     }
     return targets;
+  }
+
+  /**
+   * Plan merging two session memory blocks. A block bound to no repo agent (a New-chat block)
+   * merges with any block and goes into it; other blocks merge only when bound to exactly the same
+   * repo agents. `from` is merged into `to`.
+   */
+  async planSessionBlockMerge(
+    assetA: string,
+    assetB: string,
+  ): Promise<{ from: AgentEntity; to: AgentEntity; teamId: string }> {
+    if (assetA === assetB) throw new MetadataError("invalid_merge", "cannot merge a memory block into itself");
+    const [a, b] = await this.resolveChatMemoryTargets([assetA, assetB]);
+    if (a.team_id !== b.team_id) throw new MetadataError("team_mismatch", "memory blocks belong to different teams");
+    const agentA = await this.getAgentById(a.agent_id);
+    const agentB = await this.getAgentById(b.agent_id);
+    if (!agentA || !agentB || !isSessionAgent(agentA) || !isSessionAgent(agentB)) {
+      throw new MetadataError("invalid_merge", "only session memory blocks can be merged");
+    }
+    const reposA = await this.boundRepoAgents(assetA, agentA.agent_id);
+    const reposB = await this.boundRepoAgents(assetB, agentB.agent_id);
+    const same = reposA.size === reposB.size && [...reposA].every((id) => reposB.has(id));
+    if (reposA.size > 0 && reposB.size > 0 && !same) {
+      throw new MetadataError("merge_repos_differ", "memory blocks of different repos cannot be merged");
+    }
+    return reposA.size > 0 && reposB.size === 0
+      ? { from: agentB, to: agentA, teamId: a.team_id }
+      : { from: agentA, to: agentB, teamId: a.team_id };
+  }
+
+  /** The repo agents (metadata kind "repo") binding a memory block. */
+  private async boundRepoAgents(assetId: string, ownerId: string): Promise<Set<string>> {
+    const repos = new Set<string>();
+    for (const b of await this.store.listAssetBindings(assetId)) {
+      if (b.agent_id === ownerId) continue;
+      const agent = await this.getAgentById(b.agent_id);
+      if (agent?.status === "active" && agentMeta(agent).kind === "repo") repos.add(agent.agent_id);
+    }
+    return repos;
+  }
+
+  /**
+   * After the content moved: record the merged session ids on `to` (so the merged session's later
+   * turns find this block), then archive `from`, which removes its block and bindings.
+   */
+  async completeSessionBlockMerge(from: AgentEntity, to: AgentEntity): Promise<void> {
+    const fromMeta = agentMeta(from);
+    const toMeta = agentMeta(to);
+    const merged = [
+      ...new Set([...(toMeta.merged_sessions ?? []), fromMeta.session_id, ...(fromMeta.merged_sessions ?? [])]),
+    ].filter(Boolean);
+    await this.updateAgent(to.agent_id, { metadata_json: JSON.stringify({ ...toMeta, merged_sessions: merged }) });
+    await this.archiveAgent(from.agent_id);
   }
 
   /**

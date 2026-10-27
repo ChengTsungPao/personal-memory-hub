@@ -489,6 +489,18 @@ export interface MemoryContentClearResult {
   profilesDeleted: number;
 }
 
+/** Move one agent's L0 + L1 to another agent of the same team (merging session memory blocks). */
+export interface MemoryContentMoveArgs {
+  teamId: string;
+  fromAgentId: string;
+  toAgentId: string;
+}
+
+export interface MemoryContentMoveResult {
+  l0Moved: number;
+  l1Moved: number;
+}
+
 export type KnowledgeType = "wiki" | "code-graph";
 
 export interface KnowledgeEntity {
@@ -727,6 +739,13 @@ export interface IMemoryStore extends MemoryPromptStore, MemoryGenerationRefStor
    * 实现必须校验 filter.teamId / filter.agentId 非空，否则抛错拒绝执行。
    */
   clearMemoryContent?(filter: MemoryContentClearFilter): MaybePromise<MemoryContentClearResult>;
+
+  /**
+   * Re-own every L0 and L1 row of `fromAgentId` to `toAgentId` (same team), with their FTS rows;
+   * vectors are keyed by record id and stay as they are. Used by `/v3/chat-memory/merge`. L2/L3
+   * profiles are not moved: they are rebuilt from L1. Must reject empty ids and from === to.
+   */
+  moveMemoryContent?(args: MemoryContentMoveArgs): MaybePromise<MemoryContentMoveResult>;
 
   // ── Entity metadata (Team / User / Agent / Task) ───────────
   createTeam?(input: Omit<TeamEntity, "created_at" | "updated_at" | "status" | "user_ids" | "agent_ids" | "task_ids"> & { team_id?: string; status?: TeamStatus }): MaybePromise<TeamEntity>;

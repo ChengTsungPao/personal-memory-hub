@@ -1,5 +1,5 @@
 /**
- * /v3/chat-memory/* HTTP handlers — Chat Memory 内容清空。
+ * /v3/chat-memory/* HTTP handlers — Chat Memory 内容清空，以及合并 session 记忆块（merge）。
  *
  * 设计要点：
  *   - `clear` 只删**内容**，不删资产。asset_id、Team/Agent 归属、Agent 绑定、
@@ -32,6 +32,7 @@ import { StoragePaths } from "../core/storage/types.js";
 import { createScopedStorageAdapter, scopeProfileStorageView, type StorageAdapter } from "../core/storage/adapter.js";
 import { buildProfileIsolationScope } from "../core/profile/profile-scope.js";
 import { MetadataError, type MetadataService } from "../metadata/service/metadata-service.js";
+import { buildChatMemoryAssetId } from "../metadata/utils/chat-memory-asset.js";
 import type { Logger } from "../core/types.js";
 
 const TAG = "[chat-memory-handlers]";
@@ -474,6 +475,74 @@ async function handleChatMemoryClear(
 }
 
 // ═════════════════════════════════════════════════════════════
+//  Merge (session memory blocks)
+// ═════════════════════════════════════════════════════════════
+
+export const chatMemoryMergeRequestSchema = z.object({
+  source_memory_id: z.string().trim().min(1),
+  target_memory_id: z.string().trim().min(1),
+});
+
+export interface ChatMemoryMergeData {
+  /** The block that remains; may be the request's source when the target was a New-chat block. */
+  memory_id: string;
+  /** The block that was merged in and removed. */
+  merged_memory_id: string;
+  l0_moved: number;
+  l1_moved: number;
+}
+
+/**
+ * `/v3/chat-memory/merge`: merge two session memory blocks into one (Claude Code sessions, see
+ * MetadataService.planSessionBlockMerge for which pairs may merge and which way). The L0 and L1
+ * rows move to the remaining block; its L2/L3 are rebuilt from L1 by the pipeline. The merged
+ * session id is recorded on the remaining block, then the merged block is removed.
+ *
+ * Same trust model as clear: the panel backend checks asset ownership before forwarding.
+ */
+async function handleChatMemoryMerge(
+  body: unknown,
+  auth: V2AuthContext,
+  requestId: string,
+  depsRaw: unknown,
+): Promise<ApiResponseEnvelope> {
+  const deps = depsRaw as ChatMemoryRouterDeps;
+  const parsed = chatMemoryMergeRequestSchema.safeParse(body);
+  if (!parsed.success) return errorEnvelope(400, formatZodErr(parsed.error), requestId);
+
+  const store = deps.getStore();
+  if (!store) return errorEnvelope(503, "Store not available", requestId);
+  if (typeof store.moveMemoryContent !== "function") {
+    return errorEnvelope(503, "Store does not support chat memory merge", requestId);
+  }
+  if (!deps.getMetadataService) return errorEnvelope(503, "Metadata service not available", requestId);
+
+  try {
+    const metaSvc = await deps.getMetadataService(auth.serviceId);
+    const plan = await metaSvc.planSessionBlockMerge(parsed.data.source_memory_id, parsed.data.target_memory_id);
+    const moved = await store.moveMemoryContent({
+      teamId: plan.teamId,
+      fromAgentId: plan.from.agent_id,
+      toAgentId: plan.to.agent_id,
+    });
+    await metaSvc.completeSessionBlockMerge(plan.from, plan.to);
+    deps.logger.info(
+      `${TAG} merged ${plan.from.agent_id} into ${plan.to.agent_id}: l0=${moved.l0Moved} l1=${moved.l1Moved}`,
+    );
+    return successEnvelope<ChatMemoryMergeData>({
+      memory_id: buildChatMemoryAssetId(plan.teamId, plan.to.agent_id),
+      merged_memory_id: buildChatMemoryAssetId(plan.teamId, plan.from.agent_id),
+      l0_moved: moved.l0Moved,
+      l1_moved: moved.l1Moved,
+    }, requestId);
+  } catch (err) {
+    if (err instanceof MetadataError) return errorEnvelope(metadataErrorCode(err.code), err.message, requestId);
+    deps.logger.error(`${TAG} merge failed: ${err instanceof Error ? err.message : String(err)}`);
+    return errorEnvelope(500, "merge failed", requestId);
+  }
+}
+
+// ═════════════════════════════════════════════════════════════
 //  Route table
 // ═════════════════════════════════════════════════════════════
 
@@ -487,7 +556,8 @@ type RouteHandler = (
 export function makeChatMemoryRouteTable(): Record<string, RouteHandler> {
   return {
     "/v3/chat-memory/clear": handleChatMemoryClear,
+    "/v3/chat-memory/merge": handleChatMemoryMerge,
   };
 }
 
-export { handleChatMemoryClear };
+export { handleChatMemoryClear, handleChatMemoryMerge };

@@ -53,6 +53,8 @@ import type {
   BatchDeleteResult,
   MemoryContentClearFilter,
   MemoryContentClearResult,
+  MemoryContentMoveArgs,
+  MemoryContentMoveResult,
 } from "../types.js";
 import type { MemoryRecord } from "../../record/l1-writer.js";
 import { DEFAULT_ISOLATION_ID } from "../isolation.js";
@@ -744,6 +746,20 @@ export class MongoMemoryStore implements IMemoryStore {
       l1Deleted: l1Res.deletedCount,
       profilesDeleted: profRes.deletedCount,
     };
+  }
+
+  async moveMemoryContent(args: MemoryContentMoveArgs): Promise<MemoryContentMoveResult> {
+    const { teamId, fromAgentId, toAgentId } = args;
+    if (!teamId || !fromAgentId || !toAgentId || fromAgentId === toAgentId) {
+      throw new Error(`${TAG} moveMemoryContent requires a team and two different agent ids`);
+    }
+    const match = { team_id: teamId, agent_id: fromAgentId };
+    const set = { $set: { agent_id: toAgentId } };
+    const [l0Res, l1Res] = await Promise.all([
+      (await this.coll(COLLECTIONS.L0)).updateMany(match as never, set as never),
+      (await this.coll(COLLECTIONS.L1)).updateMany(match as never, set as never),
+    ]);
+    return { l0Moved: l0Res.modifiedCount, l1Moved: l1Res.modifiedCount };
   }
 
   // ════════════════════════════════════════════════════════

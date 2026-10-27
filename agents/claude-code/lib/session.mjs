@@ -206,13 +206,32 @@ export async function bindSession(cfg, sessionId, cwd, edit) {
 
   const session = await findOrCreate(cfg, {
     cacheId: state.sessionAgentId,
-    match: (m) => m.kind === "session" && m.session_id === sessionId,
+    // A block merged into another (panel merge) lists the merged session ids: keep writing there.
+    match: (m) => m.kind === "session" && (m.session_id === sessionId || (m.merged_sessions ?? []).includes(sessionId)),
     name: sessionName([], sessionId),
     metadata: { kind: "session", session_id: sessionId, cwd: cwd ?? "", repos: [], added: [], removed: [] },
     listAgents,
   });
   state.sessionAgentId = session.agent_id;
   const sessionMeta = parseMeta(session);
+
+  // This session was merged into another session's block: write there, but leave its binding to
+  // the session that owns it (this session's folder may have other repos).
+  if (sessionMeta.session_id !== sessionId) {
+    if (edit) throw new Error(`這個 session 已合併到記憶塊「${session.name}」，請在原 session 或面板調整 repo`);
+    writeState(cfg, sessionId, state);
+    const assetId = blockAssetId(cfg, session.agent_id);
+    const bound = ((await meta(cfg, "agent-fixed-asset/bindings-of-asset", { asset_id: assetId }))?.items ?? [])
+      .map((b) => b.agent_id)
+      .filter((id) => id !== session.agent_id);
+    const targets = [];
+    for (const id of bound) {
+      const agent = await activeAgent(cfg, id);
+      if (agent) targets.push({ agent_id: agent.agent_id, name: agent.name });
+    }
+    return { sessionId, sessionAgentId: session.agent_id, repos: sessionMeta.repos ?? [], targets, mergedInto: session.name };
+  }
+
   let added = sessionMeta.added ?? [];
   let removed = sessionMeta.removed ?? [];
   if (edit) ({ added, removed } = edit(added, removed));
@@ -412,8 +431,10 @@ export async function editRepos(cfg, sessionId, cwd, op, ref) {
 }
 
 /** The line printed after each hook: this session's block and the repos it belongs to. */
-export function describeBinding({ sessionId, repos, targets }) {
-  const block = `🧠 記憶塊 ${sessionId.slice(0, 8)}`;
+export function describeBinding({ sessionId, repos, mergedInto }) {
+  const block = mergedInto
+    ? `🧠 記憶塊 ${sessionId.slice(0, 8)}（已合併到「${mergedInto}」）`
+    : `🧠 記憶塊 ${sessionId.slice(0, 8)}`;
   if (repos.length === 0) return `${block} → ${NEW_CHAT_NAME}（沒有 repo）`;
-  return `${block} → ${targets.map((t, i) => `${t.name} (${repos[i]?.hash.slice(0, 7) ?? "?"})`).join(" · ")}`;
+  return `${block} → ${repos.map((r) => `${r.name} (${r.hash.slice(0, 7)})`).join(" · ")}`;
 }
