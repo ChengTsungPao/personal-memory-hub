@@ -43,6 +43,20 @@ test("finds the folder's repos one level down, skipping plain folders and repos 
   rmSync(root, { recursive: true, force: true });
 });
 
+test("an empty repo (a placeholder, e.g. an Orca project) is not a repo", () => {
+  const root = tmp();
+  const empty = path.join(root, "orca-project");
+  mkdirSync(empty);
+  git(empty, "init", "-q");
+  git(empty, "-c", "user.name=t", "-c", "user.email=t@example.invalid", "commit", "-q", "--allow-empty", "-m", "Initial commit");
+  git(empty, "worktree", "add", "-q", path.join(root, "workspace"));
+
+  assert.equal(repoAt(empty), null);
+  assert.equal(repoAt(path.join(root, "workspace")), null);
+  makeRepo(path.join(root, "workspace", "real"));
+  assert.deepEqual(findRepos(path.join(root, "workspace")).map((r) => r.name), ["real"]);
+});
+
 test("a subfolder and a worktree of a repo share its hash and name", () => {
   const root = tmp();
   const a = makeRepo(path.join(root, "a"));

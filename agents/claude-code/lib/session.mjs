@@ -40,15 +40,17 @@ function git(cwd, args) {
 }
 
 /**
- * The repo `dir` is in, as `{ hash, name, dir }`, or null when it is not in a repo or the repo has
- * no commit yet. `hash` is the root commit (the first in sort order when the history has several);
- * `name` is the main repo folder's name, not a worktree's.
+ * The repo `dir` is in, as `{ hash, name, dir }`, or null when it is not in a repo, the repo has
+ * no commit yet, or it has no files: an empty repo is a placeholder (Orca keeps one per project
+ * just to create workspaces from), not a project. `hash` is the root commit (the first in sort
+ * order when the history has several); `name` is the main repo folder's name, not a worktree's.
  */
 export function repoAt(dir) {
   const top = git(dir, ["rev-parse", "--show-toplevel"]);
   if (!top) return null;
   const roots = git(top, ["rev-list", "--max-parents=0", "HEAD"]).split(/\r?\n/).filter(Boolean).sort();
   if (roots.length === 0) return null;
+  if (!git(top, ["ls-tree", "--name-only", "HEAD"])) return null;
   const common = git(top, ["rev-parse", "--path-format=absolute", "--git-common-dir"]);
   const name = path.basename(common ? path.dirname(common) : top) || path.basename(top);
   return { hash: roots[0], name, dir: top };
