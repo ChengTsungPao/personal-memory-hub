@@ -14,8 +14,9 @@
  */
 
 import "../lib/env.mjs";
-import { loadConfig, debugLog } from "../../claude-code/lib/config.mjs";
+import { debugLog } from "../../claude-code/lib/config.mjs";
 import { CoreClient } from "../../claude-code/lib/core-client.mjs";
+import { openSession } from "../../claude-code/lib/session.mjs";
 import { readNewMessages, readCursor, writeCursor } from "../lib/transcript.mjs";
 
 async function readStdin() {
@@ -37,10 +38,12 @@ async function main() {
 
   const sessionId = payload.conversationId;
   const transcriptPath = payload.transcriptPath;
-  const cfg = await loadConfig(payload.workspacePaths?.[0]);
+  // This conversation's own memory block, bound to its repos (claude-code/lib/session.mjs).
+  const { cfg, skip } = await openSession(sessionId, payload.workspacePaths?.[0]);
   if (!sessionId || !transcriptPath) {
     return debugLog(cfg, "payload missing conversationId or transcriptPath");
   }
+  if (skip) return debugLog(cfg, "no admin key: cannot create this session's memory block");
 
   const cursor = readCursor(cfg.stateDir, sessionId);
   const { messages, lastUuid } = readNewMessages(transcriptPath, cursor);
@@ -65,5 +68,5 @@ main()
   })
   .finally(() => {
     process.stdout.write('{"decision":""}');
-    process.exit(0);
+    setTimeout(() => process.exit(0), 20).unref();
   });

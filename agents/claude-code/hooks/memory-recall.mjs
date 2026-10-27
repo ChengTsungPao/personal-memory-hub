@@ -22,8 +22,9 @@
  * session must start even when the memory backend does not answer.
  */
 
-import { loadConfig, debugLog } from "../lib/config.mjs";
+import { debugLog } from "../lib/config.mjs";
 import { CoreClient } from "../lib/core-client.mjs";
+import { describeBinding, openSession, recallMemory } from "../lib/session.mjs";
 
 /** Skip the reload when a session is merely continuing. */
 const SKIP_SOURCES = new Set(["compact"]);
@@ -37,15 +38,11 @@ async function readStdin() {
   return Buffer.concat(chunks).toString("utf8");
 }
 
-function emit(context) {
-  process.stdout.write(
-    JSON.stringify({
-      hookSpecificOutput: {
-        hookEventName: "SessionStart",
-        additionalContext: context,
-      },
-    }),
-  );
+function emit(context, systemMessage) {
+  const out = {};
+  if (context) out.hookSpecificOutput = { hookEventName: "SessionStart", additionalContext: context };
+  if (systemMessage) out.systemMessage = systemMessage;
+  if (Object.keys(out).length) process.stdout.write(JSON.stringify(out));
 }
 
 function renderScenarios(entries) {
@@ -54,7 +51,10 @@ function renderScenarios(entries) {
     .slice(0, MAX_SCENARIOS);
   if (files.length === 0) return "";
 
-  const lines = files.map((e) => (e.summary ? `- \`${e.path}\` — ${e.summary}` : `- \`${e.path}\``));
+  const lines = files.map((e) => {
+    const where = e.agent ? ` (agent \`${e.agent}\`)` : "";
+    return e.summary ? `- \`${e.path}\`${where} — ${e.summary}` : `- \`${e.path}\`${where}`;
+  });
   return [
     "### Scenario blocks available (L2)",
     "",
@@ -92,36 +92,31 @@ async function main() {
     // derivation just falls back to "default" below).
   }
 
-  const cfg = await loadConfig(payload.cwd);
+  // Binds this session's memory block to its repos (lib/session.mjs); the user sees the binding.
+  const { cfg, binding } = await openSession(payload.session_id, payload.cwd);
+  const notice = binding ? describeBinding(binding) : "";
 
   if (SKIP_SOURCES.has(payload.source)) {
-    return debugLog(cfg, `source=${payload.source}; memory already in context`);
+    debugLog(cfg, `source=${payload.source}; memory already in context`);
+    return emit("", notice);
   }
 
   const client = new CoreClient(cfg);
 
   // One slow call must not delay the other, and either may legitimately be
-  // empty on a fresh install.
-  const [coreResult, scenarioResult, wikiResult] = await Promise.allSettled([
-    client.readCore(),
-    client.listScenarios(),
-    client.listWikis(),
-  ]);
+  // empty on a fresh install. L3 and the L2 index come from the other sessions'
+  // blocks under this session's repos.
+  const [memoryResult, wikiResult] = await Promise.allSettled([recallMemory(cfg, binding), client.listWikis()]);
 
   const sections = [];
 
-  if (coreResult.status === "fulfilled" && coreResult.value?.content) {
-    const persona = String(coreResult.value.content).slice(0, MAX_PERSONA_CHARS);
-    sections.push(["### Long-term memory (L3 core)", "", persona].join("\n"));
-  } else if (coreResult.status === "rejected") {
-    debugLog(cfg, "core/read failed:", coreResult.reason?.message);
-  }
-
-  if (scenarioResult.status === "fulfilled") {
-    const rendered = renderScenarios(scenarioResult.value?.entries ?? []);
+  if (memoryResult.status === "fulfilled") {
+    const { core, scenarios } = memoryResult.value;
+    if (core) sections.push(["### Long-term memory (L3 core)", "", String(core).slice(0, MAX_PERSONA_CHARS)].join("\n"));
+    const rendered = renderScenarios(scenarios);
     if (rendered) sections.push(rendered);
   } else {
-    debugLog(cfg, "scenario/ls failed:", scenarioResult.reason?.message);
+    debugLog(cfg, "memory recall failed:", memoryResult.reason?.message);
   }
 
   if (wikiResult.status === "fulfilled") {
@@ -132,7 +127,8 @@ async function main() {
   }
 
   if (sections.length === 0) {
-    return debugLog(cfg, "no stored memory yet — nothing to inject");
+    debugLog(cfg, "no stored memory yet — nothing to inject");
+    return emit("", notice);
   }
 
   emit(
@@ -142,6 +138,7 @@ async function main() {
       "",
       ...sections,
     ].join("\n"),
+    notice,
   );
   debugLog(cfg, `injected ${sections.length} memory section(s)`);
 }

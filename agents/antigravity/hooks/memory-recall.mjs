@@ -12,8 +12,9 @@
  */
 
 import "../lib/env.mjs";
-import { loadConfig, debugLog } from "../../claude-code/lib/config.mjs";
+import { debugLog } from "../../claude-code/lib/config.mjs";
 import { CoreClient } from "../../claude-code/lib/core-client.mjs";
+import { openSession, recallMemory } from "../../claude-code/lib/session.mjs";
 
 const MAX_PERSONA_CHARS = 4000;
 const MAX_SCENARIOS = 40;
@@ -30,7 +31,10 @@ function renderScenarios(entries) {
     .slice(0, MAX_SCENARIOS);
   if (files.length === 0) return "";
 
-  const lines = files.map((e) => (e.summary ? `- \`${e.path}\` - ${e.summary}` : `- \`${e.path}\``));
+  const lines = files.map((e) => {
+    const where = e.agent ? ` (agent \`${e.agent}\`)` : "";
+    return e.summary ? `- \`${e.path}\`${where} - ${e.summary}` : `- \`${e.path}\`${where}`;
+  });
   return [
     "### Scenario blocks available (L2)",
     "",
@@ -67,14 +71,18 @@ async function main() {
     // not JSON: continue with an empty payload
   }
 
-  const cfg = await loadConfig(payload.workspacePaths?.[0]);
+  // Binds this conversation's memory block to its repos; L3 and the L2 index come from the other
+  // sessions' blocks under those repos (claude-code/lib/session.mjs).
+  const { cfg, binding } = await openSession(payload.conversationId, payload.workspacePaths?.[0]);
   const client = new CoreClient(cfg);
 
-  const [coreResult, scenarioResult, wikiResult] = await Promise.allSettled([
-    client.readCore(),
-    client.listScenarios(),
-    client.listWikis(),
-  ]);
+  const [memoryResult, wikiResult] = await Promise.allSettled([recallMemory(cfg, binding), client.listWikis()]);
+  const coreResult = memoryResult.status === "fulfilled"
+    ? { status: "fulfilled", value: { content: memoryResult.value.core } }
+    : memoryResult;
+  const scenarioResult = memoryResult.status === "fulfilled"
+    ? { status: "fulfilled", value: { entries: memoryResult.value.scenarios } }
+    : memoryResult;
 
   const sections = [];
   if (coreResult.status === "fulfilled" && coreResult.value?.content) {

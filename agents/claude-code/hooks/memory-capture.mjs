@@ -8,15 +8,19 @@
  * Writes only the entries added since the last run (see lib/transcript.mjs),
  * so the repeated Stop events across a long session do not re-send history.
  *
+ * The turn goes to this session's own memory block, bound to the repos the session belongs to
+ * (lib/session.mjs); the hook prints that binding after every turn.
+ *
  * **This hook must never interrupt the user.** Every failure path exits 0 with
  * no output: a memory backend that is down, misconfigured, or slow is an
  * inconvenience, not a reason to stop someone's work. Set TDAI_DEBUG=1 to see
  * what it is doing on stderr.
  */
 
-import { loadConfig, debugLog } from "../lib/config.mjs";
+import { debugLog } from "../lib/config.mjs";
 import { CoreClient } from "../lib/core-client.mjs";
 import { readNewMessages, readCursor, writeCursor } from "../lib/transcript.mjs";
+import { describeBinding, openSession } from "../lib/session.mjs";
 
 async function readStdin() {
   const chunks = [];
@@ -36,12 +40,12 @@ async function main() {
   }
 
   const sessionId = payload.session_id;
-  const cfg = await loadConfig(payload.cwd);
-
   const transcriptPath = payload.transcript_path;
+  const { cfg, binding, skip } = await openSession(sessionId, payload.cwd);
   if (!sessionId || !transcriptPath) {
     return debugLog(cfg, "payload missing session_id or transcript_path");
   }
+  if (skip) return debugLog(cfg, "no admin key: cannot create this session's memory block");
 
   const cursor = readCursor(cfg.stateDir, sessionId);
   const { messages, lastUuid } = readNewMessages(transcriptPath, cursor);
@@ -51,16 +55,18 @@ async function main() {
     // Still advance the cursor: the turn may have been pure tool calls, and
     // leaving the cursor behind would re-scan them on every later turn.
     writeCursor(cfg.stateDir, sessionId, lastUuid);
-    return;
+  } else {
+    const client = new CoreClient({ ...cfg, timeoutMs: cfg.captureTimeoutMs });
+    const accepted = await client.addConversation(sessionId, messages);
+    debugLog(cfg, `captured ${accepted}/${messages.length} messages for ${sessionId}`);
+
+    // Advance only after a successful write, so a transient failure is retried
+    // on the next turn instead of silently dropping the conversation.
+    writeCursor(cfg.stateDir, sessionId, lastUuid);
   }
 
-  const client = new CoreClient({ ...cfg, timeoutMs: cfg.captureTimeoutMs });
-  const accepted = await client.addConversation(sessionId, messages);
-  debugLog(cfg, `captured ${accepted}/${messages.length} messages for ${sessionId}`);
-
-  // Advance only after a successful write, so a transient failure is retried
-  // on the next turn instead of silently dropping the conversation.
-  writeCursor(cfg.stateDir, sessionId, lastUuid);
+  // Shown to the user in the terminal; Claude does not see it.
+  if (binding) process.stdout.write(JSON.stringify({ systemMessage: describeBinding(binding) }));
 }
 
 main()
@@ -69,4 +75,7 @@ main()
     // output. Diagnostics go to stderr, and only when debugging is on.
     if (process.env.TDAI_DEBUG === "1") console.error("[tdai-hook] capture failed:", err?.message ?? err);
   })
-  .finally(() => process.exit(0));
+  // Let pending sockets close first: exiting mid-close aborts node on Windows (UV_HANDLE_CLOSING).
+  .finally(() => {
+    setTimeout(() => process.exit(0), 20).unref();
+  });

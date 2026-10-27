@@ -15,16 +15,21 @@
 
 import { loadConfig } from "../lib/config.mjs";
 import { CoreClient } from "../lib/core-client.mjs";
+import { blocksOf, listTeamAgents, parseMeta, repoAgentsFor } from "../lib/session.mjs";
 
 const PROTOCOL_VERSION = "2024-11-05";
-const cfg = await loadConfig();
+// Session memory blocks (lib/session.mjs) unless TDAI_AGENT_ID pins one agent: then reads default
+// to the blocks under this folder's repos, and writes go to this folder's latest session block.
+const sessionBlocks = !process.env.TDAI_AGENT_ID;
+const cfg = await loadConfig(process.cwd(), { projectAgent: !sessionBlocks });
 const client = new CoreClient(cfg);
 
 // ── Tool definitions ────────────────────────────────────────────────────
 
 const AGENT_DESC =
-  "Optional, read-only lookup of ANOTHER project's memory: an agent name (e.g. 'sweetlips') " +
-  "or id ('agt-...'). See agent_list. Omit to use this session's own agent.";
+  "Optional, read-only lookup of ANOTHER project's memory: a repo agent name (e.g. 'llm-gateway') " +
+  "or id ('agt-...'), or one session memory block id. See agent_list. Omit to use the memory of " +
+  "this folder's repos.";
 
 const WIKI_DESC =
   "Wiki name (e.g. 'Jack_Notion') or wiki_id ('wiki-...'). See wiki_sources. " +
@@ -211,15 +216,45 @@ const TOOLS = [
 
 // ── Tool implementations ────────────────────────────────────────────────
 
-/** Name or id -> agent_id. undefined = this session's own agent. Never falls back silently. */
-async function resolveAgent(ref) {
-  if (!ref) return undefined;
-  const agents = await client.listAgents();
+/**
+ * Name or id -> the agent ids whose memory to read. Pinned mode: one agent, `[undefined]` meaning
+ * cfg.agentId when omitted. Session blocks: a repo agent or New-chat expands to its session
+ * blocks; omitted means the blocks under this folder's repos. Never falls back silently.
+ */
+async function resolveAgents(ref) {
+  if (!sessionBlocks && !ref) return [undefined];
+  const agents = sessionBlocks ? await listTeamAgents(cfg) : await client.listAgents();
+  if (!ref) return (await blocksOf(cfg, (await repoAgentsFor(cfg, process.cwd())).map((a) => a.agent_id))).map((b) => b.agentId);
   const hit = agents.find((a) => a.agent_id === ref) ?? agents.find((a) => a.name === ref);
   if (!hit) {
-    throw new Error(`unknown agent "${ref}". Known: ${agents.map((a) => `${a.name} (${a.agent_id})`).join(", ")}`);
+    const known = agents.filter((a) => parseMeta(a).kind !== "session");
+    throw new Error(`unknown agent "${ref}". Known: ${known.map((a) => `${a.name} (${a.agent_id})`).join(", ")}`);
   }
-  return hit.agent_id;
+  const kind = parseMeta(hit).kind;
+  if (sessionBlocks && (kind === "repo" || kind === "new-chat")) {
+    return (await blocksOf(cfg, [hit.agent_id])).map((b) => b.agentId);
+  }
+  return [hit.agent_id];
+}
+
+/** Where writes go with session blocks: the newest session block opened in this folder. */
+async function writeAgent() {
+  if (!sessionBlocks) return undefined;
+  const cwd = process.cwd();
+  const mine = (await listTeamAgents(cfg))
+    .filter((a) => parseMeta(a).kind === "session" && parseMeta(a).cwd === cwd)
+    .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
+  if (!mine[0]) throw new Error("this folder has no session memory block yet; it is created after the first turn");
+  return mine[0].agent_id;
+}
+
+/** Run a read on each agent and tag the results with the agent they came from. */
+async function eachAgent(agentIds, read) {
+  if (agentIds.length === 1) return read(agentIds[0]);
+  const settled = await Promise.allSettled(agentIds.map(read));
+  return settled.map((r, i) =>
+    r.status === "fulfilled" ? { agent: agentIds[i], ...r.value } : { agent: agentIds[i], error: r.reason?.message },
+  );
 }
 
 /**
@@ -254,50 +289,59 @@ async function resolveWiki(ref) {
 
 async function callTool(name, args = {}) {
   const readTools = ["memory_search", "scenario_list", "scenario_read", "core_read"];
-  const agentId = readTools.includes(name) ? await resolveAgent(args.agent) : undefined;
+  const agentIds = readTools.includes(name) ? await resolveAgents(args.agent) : [];
+  if (readTools.includes(name) && agentIds.length === 0) {
+    return { note: "no memory blocks for this folder's repos yet" };
+  }
   switch (name) {
     case "agent_list":
-      return client.listAgents();
+      if (!sessionBlocks) return client.listAgents();
+      return (await listTeamAgents(cfg))
+        .filter((a) => parseMeta(a).kind !== "session")
+        .map((a) => ({ agent_id: a.agent_id, name: a.name, kind: parseMeta(a).kind ?? "agent" }));
 
     case "memory_search": {
       const limit = args.limit ?? 10;
       const layer = args.layer ?? "both";
-      const out = {};
-      const jobs = [];
-      if (layer === "both" || layer === "conversations") {
-        jobs.push(
-          client
-            .searchConversation(args.query, limit, agentId)
-            .then((d) => { out.conversations = d; })
-            .catch((e) => { out.conversations = { error: e.message }; }),
-        );
-      }
-      if (layer === "both" || layer === "atoms") {
-        jobs.push(
-          client
-            .searchAtomic(args.query, limit, agentId)
-            .then((d) => { out.atoms = d; })
-            .catch((e) => { out.atoms = { error: e.message }; }),
-        );
-      }
-      await Promise.all(jobs);
-      return out;
+      return eachAgent(agentIds, async (agentId) => {
+        const out = {};
+        const jobs = [];
+        if (layer === "both" || layer === "conversations") {
+          jobs.push(
+            client
+              .searchConversation(args.query, limit, agentId)
+              .then((d) => { out.conversations = d; })
+              .catch((e) => { out.conversations = { error: e.message }; }),
+          );
+        }
+        if (layer === "both" || layer === "atoms") {
+          jobs.push(
+            client
+              .searchAtomic(args.query, limit, agentId)
+              .then((d) => { out.atoms = d; })
+              .catch((e) => { out.atoms = { error: e.message }; }),
+          );
+        }
+        await Promise.all(jobs);
+        return out;
+      });
     }
 
     case "scenario_list":
-      return client.listScenarios(args.path_prefix, agentId);
+      return eachAgent(agentIds, (agentId) => client.listScenarios(args.path_prefix, agentId));
 
     case "scenario_read":
-      return client.readScenario(args.path, agentId);
+      return eachAgent(agentIds, (agentId) => client.readScenario(args.path, agentId));
 
     case "scenario_write":
-      return client.writeScenario(args.path, args.content, args.summary);
+      return new CoreClient({ ...cfg, agentId: (await writeAgent()) ?? cfg.agentId })
+        .writeScenario(args.path, args.content, args.summary);
 
     case "core_read":
-      return client.readCore(agentId);
+      return eachAgent(agentIds, (agentId) => client.readCore(agentId));
 
     case "core_write":
-      return client.writeCore(args.content);
+      return new CoreClient({ ...cfg, agentId: (await writeAgent()) ?? cfg.agentId }).writeCore(args.content);
 
     case "wiki_sources":
       return client.listWikis();

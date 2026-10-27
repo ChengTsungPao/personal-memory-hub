@@ -237,108 +237,57 @@ settings file, so no secret is ever committed.
 | `TDAI_SERVICE_ID` | `default` | Instance id (`x-tdai-service-id`) |
 | `TDAI_KERNEL_TOKEN` | *(empty → sends `Bearer local`)* | Layer-1 gateway token. The gateway rejects a request with **no** `Authorization` header even when it has no apiKey — it just doesn't check the value — so an empty token still sends a placeholder, as MemoryProxy does |
 | `TDAI_TEAM_ID` | `default` | Isolation triple — v3 requires team + agent + user. **Set this to the id the panel shows** (e.g. `team-…`): memory written under `default` is stored fine but is invisible in the panel, which browses by its own ids |
-| `TDAI_AGENT_ID` | *(auto-registered per project, see below — set this only to force one fixed value)* | |
+| `TDAI_AGENT_ID` | *(unset: one memory block per session, see below)* | Set only to make every session write to one fixed agent |
 | `TDAI_USER_ID` | `default` | |
 | `TDAI_TASK_ID` | *(unset)* | Optional; omitted from requests when empty |
 | `TDAI_TIMEOUT_MS` | `8000` | Per-request timeout (SessionStart recall, MCP) |
 | `TDAI_CAPTURE_TIMEOUT_MS` | `30000` | Timeout for the Stop-hook write. Longer because each message is embedded; a cold embedding model can take 15s+. Keep the Stop hook's own `timeout` above it (template: 45s) |
-| `TDAI_STATE_DIR` | `~/.memory-tdai/claude-code` | Machine-local capture cursors |
-| `TDAI_REGISTRY_FILE` | `~/.personal-memory-hub/agents.json` | project→agent_id registry; lives with the database so it moves with it |
-| `TDAI_ADMIN_KEY_FILE` | `~/.personal-memory-hub/admin-key` | MemoryCore admin `user_key`, needed only to auto-register a new agent the first time a project is seen — see below |
+| `TDAI_STATE_DIR` | `~/.memory-tdai/claude-code` | Machine-local capture cursors, and per-session binding cache + manual repo edits (`sessions/`) |
+| `TDAI_ADMIN_KEY_FILE` | `~/.personal-memory-hub/admin-key` | MemoryCore admin `user_key`, needed to create session blocks and bind them — see below |
 | `TDAI_DEBUG` | *(unset)* | `1` logs hook diagnostics to stderr |
 
-### Memory isolation: why `agent_id` is per-project, not per-session
+### Memory isolation: one memory block per session, bound to its repos
 
-**What `team_id` + `agent_id` actually mean.** Every layer of memory (L0
-conversations, L1 atoms, L2 scene blocks, L3 persona) is partitioned by the
-`(team_id, agent_id)` pair — see `MemoryCore/src/metadata/utils/chat-memory-asset.ts`,
-which builds the storage key as literally `chat_memory-{team_id}-{agent_id}`.
-This is **not** one bucket per chat session. It's one continuously-accumulating
-memory per *agent identity* — the whole point of the L1→L2→L3 pipeline is to
-synthesize many conversations, over time, into one coherent picture (L3 persona
-regeneration alone triggers every 50 processed conversations; that only makes
-sense across a large number of sessions). In the upstream multi-tenant design,
-one `agent_id` is meant to represent one specific bot/assistant a team
-registers (e.g. "our customer-support bot"), and everyone's conversations with
-that one bot feed its one growing memory.
+Every layer of memory (L0–L3) is stored per `(team_id, agent_id)`; the storage key is literally
+`chat_memory-{team_id}-{agent_id}` (`MemoryCore/src/metadata/utils/chat-memory-asset.ts`). The
+hooks use that as follows (`lib/session.mjs`, only when `TDAI_AGENT_ID` is not set):
 
-**The mistake we made setting this up.** The initial wiring pinned
-`TDAI_TEAM_ID`/`TDAI_AGENT_ID` to one fixed pair in `~/.claude/settings.json`,
-so *every* Claude Code session on the machine — regardless of which project it
-was in — wrote into the same `agent_id`. This isn't just "everything shows up
-under one name in the panel" — it actively degraded memory quality: L2 scene
-blocks from completely unrelated projects (this repo, an unrelated LaTeX
-project, an unrelated input-method side project, Docker networking notes, …)
-all landed in the same bucket, and L3 persona regeneration was then asked to
-synthesize one coherent "Team Operating Doctrine" out of all of them at once —
-producing an incoherent mashup of unrelated rules (image-mirror policy next to
-UAC-authorization rules next to an IME's UI design decisions) that then gets
-injected as `additionalContext` into the *next* unrelated session's
-`SessionStart`, regardless of what that session is actually about.
+- **One block per session.** Each session gets a hidden *session agent* whose chat_memory is that
+  session's memory block. Its metadata is `{"kind":"session","session_id":…,"cwd":…,"repos":[…]}`,
+  so the session id → block mapping lives on the server: a session always finds its block again,
+  also with the local cache gone. `repos` tags the block with the repos it belongs to.
+- **Repos by root commit hash.** A repo is identified only by its root commit
+  (`git rev-list --max-parents=0 HEAD`, the first when sorted): worktrees and other clones of a repo
+  share it. Each repo has one *repo agent* (`{"kind":"repo","root_commit":…}`), named after the main
+  repo folder.
+- **Which repos.** The repo the session folder is in, plus the repos one level below the folder. A
+  repo with no commit yet does not count.
+- **Binding.** The session block is bound to each of those repo agents (MemoryCore's
+  `agent-fixed-asset/add`), so the panel lists it under every repo it belongs to. With no repo it is
+  bound to the shared *New-chat* agent instead, and leaves New-chat as soon as a repo appears.
+- **By hand.** `mem: repo add <path or repo name>` and `mem: repo rm <repo name or hash>`
+  (`hooks/memory-command.mjs`) edit the binding; `mem: repo` shows it. A removed repo is never added
+  back by the folder scan. After every turn the Stop hook prints the binding, e.g.
+  `🧠 記憶塊 d421a1be → llm-gateway (4f98fc7) · personal-memory-hub (c19a7cf)`.
+- **Recall.** `SessionStart` loads L3 and the L2 index of the other session blocks under this
+  session's repo agents (newest 10). New-chat sessions do not read each other's memory.
+- **MCP.** Reads default to the blocks under the repos of the server's folder; the `agent` argument
+  takes a repo agent (all its blocks) or one block. Writes go to the newest session block opened in
+  that folder.
 
-Naively fixing this by keying on **session_id instead** would be worse, not
-better: session_id changes every time you open `claude`, so every session
-would become an isolated island that can never see memory from any earlier
-session — the L1/L2/L3 pipeline would have nothing to accumulate, defeating
-the entire point of long-term memory. (An earlier version of this fix tried
-exactly that for non-git chats specifically — see below for why that was
-also wrong, in a smaller way.)
+Deleting a repo agent in the panel only unbinds its blocks; a block that no other agent binds is
+deleted with it (MemoryCore `archiveAgent`).
 
-**The actual fix: one real MemoryCore agent per project, auto-registered
-and cached.** `MemoryCore`'s `/v3/meta/agent/create` doesn't accept a
-caller-chosen `agent_id` — it always mints its own random one, and creating
-an agent is also what auto-provisions its `chat_memory` asset (so the Panel
-actually lists it). So `agent_id` can't just be *computed* locally the way
-the old approach tried; it has to be *registered*, once per project, and
-remembered. `lib/config.mjs`'s `loadConfig(cwd)` does this automatically
-(only when `TDAI_AGENT_ID` isn't set explicitly):
+**This needs the admin key.** `/v3/meta/*` authenticates with an `x-tdai-user-key` header carrying a
+real MemoryCore user key (`TDAI_ADMIN_KEY_FILE`, default `~/.personal-memory-hub/admin-key`, where
+`start-memory-core.sh` writes it). Without it the hooks write nothing, since there is no block to
+write to.
 
-1. Derive a **project key** from `cwd`'s git identity — `git remote get-url
-   origin` hashed (stable across clones/worktrees of the same repo), or the
-   repo's root commit hash (`git rev-list --max-parents=0 HEAD`) when there's
-   no `origin` remote (unlike the working-directory path, this stays
-   identical across `git worktree` checkouts of the same history). When
-   `cwd` isn't inside a git repo at all, every such chat shares one fixed
-   key (`"adhoc"`) instead of each minting its own agent — a one-off chat
-   with no project has no stable identity to accumulate memory around
-   anyway, and giving each one its own agent meant the Panel accumulated a
-   new entry per one-off chat, forever, with no way back to "default".
-2. Look up that project key in `~/.personal-memory-hub/agents.json` (a flat
-   JSON map, kept next to the database so it moves with it). A hit returns the cached `agent_id`
-   immediately — no network call.
-3. On a miss (first time this project is seen), `POST
-   /v3/meta/agent/create` with `team_id`, `owner_user_id: TDAI_USER_ID`, and
-   `name` set to the repo name (parsed from the remote URL; with no remote,
-   the main repo's folder name — not the worktree folder, which tools like
-   Orca name randomly — `"adhoc-chat"` for the adhoc bucket). The
-   response's `agent_id` is cached into `agents.json` and returned.
-4. Registration failure of any kind (see below) — or no git repo *and* the
-   admin key missing — falls back to the literal string `"default"`, the
-   original pre-fix behavior. A hook must never hang or error out over this;
-   losing per-project isolation for one call is a far smaller problem than
-   blocking the user's turn.
+Setting `TDAI_AGENT_ID` turns all of this off: every session then writes to that one agent.
 
-**This needs the admin key, not the hooks' usual token.** `/v3/meta/*`
-endpoints authenticate via an `x-tdai-user-key` header carrying a real
-MemoryCore user key — the `Bearer local` placeholder the hooks send on
-every other (data-plane) call doesn't work here and gets a plain 401. Set
-`TDAI_ADMIN_KEY_FILE` to point at the admin key (default
-`~/.personal-memory-hub/admin-key`, where `start-memory-core.sh` writes it); without it,
-registration silently no-ops and everything falls back to `"default"`.
-
-The two hooks pass `payload.cwd` from the hook's stdin payload; the MCP
-server (a persistent process) uses its own `process.cwd()` at launch.
-`team_id` and `user_id` stay fixed — only `agent_id` (which project) varies.
-Existing memory recorded before this fix (or under `"default"`, or under a
-per-session id from the short-lived approach in between) is **not**
-migrated — it stays where it was; only new activity gets sorted correctly
-going forward.
-
-Verified live on this machine: three real projects
-(`personal-memory-hub`, this worktree's parent repo, and the adhoc bucket)
-each auto-registered their own agent on first use, each got its own
-`chat_memory` asset, and the Panel now lists four entries instead of the
-one it used to collapse everything into.
+Codex (`agents/codex`) and Antigravity (`agents/antigravity`) use the same `lib/session.mjs`, so
+their sessions get blocks bound the same way; they have no `mem: repo` command and do not print the
+binding.
 
 ### 5. Register the hooks
 
@@ -461,10 +410,12 @@ already in context.
 
 | Path | Purpose |
 |---|---|
-| `hooks/memory-capture.mjs` | `Stop` → append the turn to L0 |
-| `hooks/memory-recall.mjs` | `SessionStart` → inject L3 + L2 index |
+| `hooks/memory-capture.mjs` | `Stop` → append the turn to this session's block, print the binding |
+| `hooks/memory-recall.mjs` | `SessionStart` → bind the session block, inject L3 + L2 index of the other blocks under its repos |
+| `hooks/memory-command.mjs` | `UserPromptSubmit` → `mem: repo` / `mem: repo add` / `mem: repo rm` |
 | `mcp/server.mjs` | MCP stdio server: search, scenario read/write, core read/write |
 | `lib/config.mjs` | Environment loading, isolation fields |
+| `lib/session.mjs` | Session blocks: repo scan, binding, recall across blocks |
 | `lib/core-client.mjs` | MemoryCore v3 data-plane client |
 | `lib/transcript.mjs` | Transcript parsing + capture cursor |
 | `settings.template.json` | Hook registration to merge into `~/.claude/settings.json` |
