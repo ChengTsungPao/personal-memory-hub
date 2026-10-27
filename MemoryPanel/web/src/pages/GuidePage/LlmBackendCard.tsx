@@ -144,13 +144,13 @@ export function LlmBackendCard() {
       </div>
 
       {status?.mode === 'gateway' && (
-        <p className="guide-llm-backend-warning" style={{ background: '#f0fdf4', borderColor: '#bbf7d0', color: '#166534' }}>
+        <p className="guide-llm-backend-warning" style={{ background: 'var(--tea-color-bg-success-lighten-default)', color: 'var(--tea-color-text-success-default)' }}>
           ⓘ <b>LLM Gateway 模式</b>：支援標準 OpenAI API 格式與 tool-calling。
         </p>
       )}
 
       {status?.mode === 'openrouter' && (
-        <p className="guide-llm-backend-warning" style={{ background: '#eef2ff', borderColor: '#c7d2fe', color: '#3730a3' }}>
+        <p className="guide-llm-backend-warning" style={{ background: 'var(--tea-color-bg-brand-lighten-default)', color: 'var(--tea-color-text-brand-default)' }}>
           ⓘ OpenRouter 模式：直連 OpenRouter 雲端端點，需在 .env 設定 OPENROUTER_API_KEY 與 OPENROUTER_MODEL。
         </p>
       )}

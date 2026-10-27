@@ -924,13 +924,13 @@
 
 .guide-llm-backend-badge.gateway,
 .guide-llm-backend-badge.qwen {
-  background: var(--tea-color-bg-success-default, #e8f8f0);
-  color: var(--tea-color-text-success-default, #0abf5b);
+  background: var(--tea-color-bg-success-lighten-default);
+  color: var(--tea-color-text-success-default);
 }
 
 .guide-llm-backend-badge.openrouter {
-  background: #eef2ff;
-  color: #4338ca;
+  background: var(--tea-color-bg-brand-lighten-default);
+  color: var(--tea-color-text-brand-default);
 }
 
 .guide-llm-backend-badge.unknown {
@@ -977,15 +977,15 @@
   margin: 10px 0 0;
   padding: 8px 12px;
   border-radius: 6px;
-  background: #fff7e6;
-  color: #a35a00;
+  background: var(--tea-color-bg-warning-lighten-default);
+  color: var(--tea-color-text-warning-default);
   font-size: 12px;
   line-height: 18px;
 }
 
 .guide-llm-backend-error {
   margin: 8px 0 0;
-  color: #e54545;
+  color: var(--tea-color-text-error-default);
   font-size: 12px;
 }
 

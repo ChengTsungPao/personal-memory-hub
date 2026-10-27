@@ -42,7 +42,7 @@ export function RenameAgentDialog({
       disableEscape={submitting}
     >
       <Modal.Body>
-        <div style={{ marginBottom: 12, color: '#888', fontSize: 12 }}>
+        <div style={{ marginBottom: 12, color: 'var(--tea-color-text-tertiary)', fontSize: 12 }}>
           {agent.agent_id}
         </div>
         <Form layout="vertical" style={{ width: '100%' }}>

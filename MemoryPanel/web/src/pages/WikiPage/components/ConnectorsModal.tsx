@@ -136,7 +136,7 @@ export function ConnectorsModal({ visible, activeTeamId, onClose, onSynced }: Co
                 </div>
                 <div
                   style={{
-                    border: '1px solid var(--tea-color-border, #e5e7eb)',
+                    border: '1px solid var(--tea-color-border-primary-default)',
                     borderRadius: 8,
                     padding: 16,
                   }}
