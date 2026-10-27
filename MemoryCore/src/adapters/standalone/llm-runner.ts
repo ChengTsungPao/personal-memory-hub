@@ -21,6 +21,7 @@ import path from "node:path";
 import { generateText, streamText, tool, stepCountIs, jsonSchema } from "ai";
 import { createOpenAI } from "@ai-sdk/openai";
 import { report } from "../../core/report/reporter.js";
+import { asyncJobsEnabled, createAsyncJobFetch } from "./async-job-fetch.js";
 import type {
   LLMRunner,
   LLMRunParams,
@@ -301,10 +302,26 @@ export class StandaloneLLMRunner implements LLMRunner {
     // Create OpenAI-compatible provider via AI SDK
     // Use "compatible" mode to call /chat/completions (not Responses API),
     // which works with all OpenAI-compatible backends (DeepSeek, Qwen, etc.)
+    // Async job mode (llm-gateway): each chat completion becomes a gateway job that is polled, so time
+    // spent queued behind chats and agents is not timed and failed work is retried by the gateway.
+    const asyncMode = asyncJobsEnabled() && !this.stream;
     const provider = createOpenAI({
       baseURL: this.config.baseUrl,
       apiKey: this.config.apiKey,
       compatibility: "compatible",
+      ...(asyncMode
+        ? {
+            fetch: createAsyncJobFetch({
+              priority: params.priority ?? "normal",
+              dedupKey: params.dedupKey,
+              // Callers' per-call timeouts (e.g. L1's 180 s) bound a socket that also waited in the queue;
+              // a job's timeout counts generation only, so the configured llm.timeoutMs may be longer.
+              timeoutMs: Math.max(timeoutMs, this.config.timeoutMs ?? 0),
+              signal: params.abortSignal,
+              logger: this.logger,
+            }),
+          }
+        : {}),
     });
 
     // Select tools based on mode + storage
@@ -331,10 +348,12 @@ export class StandaloneLLMRunner implements LLMRunner {
       // H-11 Step 2: combine internal timeout with caller-provided abortSignal
       // (e.g. pipeline-worker lost its lock and wants the LLM call to bail out).
       // AbortSignal.any (Node 20+) aborts when ANY of the listed signals abort.
-      const timeoutSignal = AbortSignal.timeout(timeoutMs);
-      const combinedSignal = params.abortSignal
+      // In async mode the gateway times the generation itself; a timer here would also count the
+      // queue time, which is exactly what must not time out.
+      const timeoutSignal = asyncMode ? undefined : AbortSignal.timeout(timeoutMs);
+      const combinedSignal = timeoutSignal && params.abortSignal
         ? AbortSignal.any([timeoutSignal, params.abortSignal])
-        : timeoutSignal;
+        : timeoutSignal ?? params.abortSignal;
 
       const callParams = {
         model: provider.chat(this.model),
@@ -348,6 +367,8 @@ export class StandaloneLLMRunner implements LLMRunner {
           : {}),
         maxOutputTokens: maxTokens,
         abortSignal: combinedSignal,
+        // async mode: the gateway retries with a backoff; the SDK must not add quick retries on top
+        ...(asyncMode ? { maxRetries: 0 } : {}),
         experimental_telemetry: {
           isEnabled: true,
           functionId: params.taskId,

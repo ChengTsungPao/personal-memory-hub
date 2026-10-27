@@ -735,6 +735,8 @@ export const enUS = {
     'No items in the {{layer}} layer for the current time range. Try adjusting the time filter in the top-right corner.',
   'memory.detail.rangeTooLarge': 'Too many memories. Narrow the time range.',
   'memory.detail.loadMore': 'Load earlier messages',
+  'memory.detail.l1Pending': 'Memory extraction is queued or running',
+  'memory.detail.l1Failed': 'Memory extraction failed; set aside until the GPU is idle',
   'memory.detail.allLoaded': 'All messages loaded',
   'memory.detail.pageInfo': 'Page {{page}} / {{total}} · {{current}} of {{total2}} items',
   'memory.detail.prevPage': 'Prev',

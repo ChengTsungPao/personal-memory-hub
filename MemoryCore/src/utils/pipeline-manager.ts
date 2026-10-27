@@ -215,11 +215,6 @@ export class MemoryPipelineManager {
   private readonly l2MaxIntervalMs: number;
   private readonly sessionActiveWindowMs: number;
 
-  /** Delay before retrying a failed L1 (ms). */
-  private readonly L1_RETRY_DELAY_MS = 30_000; // 30 seconds
-  /** Max consecutive L1 retries per session before giving up. */
-  private readonly L1_MAX_RETRIES = 5;
-
   // Queues (named for diagnostics)
   private readonly l1Queue = new SerialQueue("L1");
   private readonly l2Queue = new SerialQueue("L2");
@@ -728,22 +723,16 @@ export class MemoryPipelineManager {
         `${TAG} [${sessionKey}] L1 failure: restored ${buffer.length} messages to buffer (total=${buffer.length + currentBuffer.length})`,
       );
 
-      // Re-arm L1 idle timer for automatic retry (with max retry limit)
+      // No quick retry loop: transient LLM failures are retried with a backoff where the call is made
+      // (the LLM gateway in async job mode). Try again after the normal idle timeout, or sooner when
+      // the next conversation arrives; the messages stay buffered and the cursor does not move.
       const timers = this.getOrCreateTimers(sessionKey);
       timers.l1RetryCount += 1;
-      if (timers.l1RetryCount <= this.L1_MAX_RETRIES) {
-        timers.l1Idle.schedule(this.L1_RETRY_DELAY_MS, () => this.onL1IdleTimeout(sessionKey));
-        this.logger?.debug?.(
-          `${TAG} [${sessionKey}] L1 retry scheduled in ${this.L1_RETRY_DELAY_MS / 1000}s ` +
-          `(attempt ${timers.l1RetryCount}/${this.L1_MAX_RETRIES})`,
-        );
-      } else {
-        this.logger?.warn(
-          `${TAG} [${sessionKey}] L1 max retries reached (${this.L1_MAX_RETRIES}), ` +
-          `giving up auto-retry. ${buffer.length + currentBuffer.length} messages remain buffered. ` +
-          `Will resume on next user conversation.`,
-        );
-      }
+      timers.l1Idle.schedule(this.l1IdleTimeoutMs, () => this.onL1IdleTimeout(sessionKey));
+      this.logger?.warn(
+        `${TAG} [${sessionKey}] L1 failed (${timers.l1RetryCount} in a row); ` +
+        `${buffer.length + currentBuffer.length} messages stay buffered, next try in ${this.l1IdleTimeoutMs / 1000}s`,
+      );
 
       return; // don't advance state or trigger L2
     }

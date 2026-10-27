@@ -176,9 +176,11 @@ memory:
     triggerEveryN: 50
     maxScenes: 15
   pipeline:
-    everyNConversations: 5
-    enableWarmup: true
-    l1IdleTimeoutSeconds: 600
+    # L1 runs in batches: every N rounds of one session, or after it has been idle this long.
+    # Fewer, larger batches keep the shared GPU free for chats (override in .env).
+    everyNConversations: ${MEMORY_L1_EVERY_N:-15}
+    enableWarmup: ${MEMORY_L1_WARMUP:-false}
+    l1IdleTimeoutSeconds: ${MEMORY_L1_IDLE_SECONDS:-1800}
     l2DelayAfterL1Seconds: 90
     l2MinIntervalSeconds: 900
     l2MaxIntervalSeconds: 3600
@@ -229,6 +231,7 @@ $DOCKER run -d --name "$CONTAINER" --restart unless-stopped \
   -e TDAI_GATEWAY_API_KEY="$MEMORY_CORE_GATEWAY_API_KEY" \
   -e TDAI_DATA_DIR=/data/tdai-memory \
   -e STORE_MODE="$MEMORY_CORE_STORE_MODE" \
+  -e TDAI_LLM_ASYNC_JOBS="${MEMORY_LLM_ASYNC_JOBS:-false}" \
   ${MONGO_ENV_ARGS[@]+"${MONGO_ENV_ARGS[@]}"} \
   "$MEMORY_CORE_IMAGE" >/dev/null
 

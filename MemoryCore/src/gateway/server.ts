@@ -180,6 +180,7 @@ function createConsoleLogger(): Logger {
  * comments above.
  */
 import { resolveMaxBodyBytes } from "../utils/env-config.js";
+import { asyncJobsEnabled } from "../adapters/standalone/async-job-fetch.js";
 
 const MAX_BODY_BYTES = resolveMaxBodyBytes();
 
@@ -301,6 +302,9 @@ export class TdaiGateway {
   private stateBackend: IStateBackend | null = null;
   private timerScanner: TimerScanner | null = null;
   private pipelineWorker: PipelineWorker | null = null;
+  /** L1 idle scavenger timer (async job mode only, see startL1Scavenger). */
+  private scavengerTimer: NodeJS.Timeout | null = null;
+  private scavengerStopped = false;
   /**
    * 跨模块共享的并发信号量 —— memory PipelineWorker 用；skill 侧走
    * conversation-add wire 出的 SkillConversationExtractWorker (agent 级串行 lock,
@@ -844,6 +848,11 @@ export class TdaiGateway {
       this.logger.info("Skill Worker Pool stopped");
     }
     this.conversationAddByInstance.clear();
+    this.scavengerStopped = true;
+    if (this.scavengerTimer) {
+      clearTimeout(this.scavengerTimer);
+      this.scavengerTimer = null;
+    }
     if (this.timerScanner) {
       await this.timerScanner.stop();
       this.logger.info("Timer Scanner stopped");
@@ -992,6 +1001,10 @@ export class TdaiGateway {
         // the handler returns 503 in that case.
         stateBackend: this.stateBackend ?? undefined,
         pipelineWorker: this.pipelineWorker ?? undefined,
+        // /v2/pipeline/l1-status asks the LLM gateway which L1 jobs are pending or failed
+        llmJobs: asyncJobsEnabled() && this.config.llm.baseUrl
+          ? { baseUrl: this.config.llm.baseUrl, apiKey: this.config.llm.apiKey }
+          : undefined,
         logger: this.logger,
         // `V3_STRICT_ISOLATION` controls only /v3 L0–L3 memory data-plane
         // strictness. Default OFF for local/integration; production should set it.
@@ -1968,6 +1981,10 @@ export class TdaiGateway {
       parkedClaimHeartbeatMs: this.config.worker.parkedClaimHeartbeatMs,
       lockRetryConcurrency: this.config.worker.lockRetryConcurrency,
       maxParkedTasks: this.config.worker.maxParkedTasks,
+      // Async job mode: the LLM gateway already retried the call with a backoff before reporting a
+      // failure, so quick local retries (5 s, 15 s, 45 s) would only hammer the same dead letter. The
+      // slice keeps its cursor and is picked up by the next L1 trigger instead.
+      ...(asyncJobsEnabled() ? { maxRetries: 0 } : {}),
       // L1 完成后推进 L2 timer（快路径：L1完成 → delay秒后触发L2）
       onL1Complete: statefulManager.advanceL2TimerAfterL1.bind(statefulManager),
       // L2 完成后设置 maxInterval 兜底 timer
@@ -1977,6 +1994,8 @@ export class TdaiGateway {
     }, this.logger);
     await this.pipelineWorker.start();
     this.logger.info("Pipeline Worker started");
+
+    if (asyncJobsEnabled() && instanceId !== "__unset__") this.startL1Scavenger(instanceId);
 
     // Skill worker 由 ensureConversationAddForInstance/Standalone 内的
     // wireConversationAdd 起, 无需在此额外启动 (对齐 2026-07-17 skill_extract
@@ -2808,6 +2827,42 @@ export class TdaiGateway {
    * The executor resolves the per-instance VDB config from InstanceConfigProvider,
    * then obtains the corresponding Store from StorePool before running the task.
    */
+  /**
+   * Async job mode: every TDAI_SCAVENGER_INTERVAL_MS (default 30 min, first run after 5 min) look for
+   * conversation below the L1 cursors that no L1 memory covers and re-extract it at `idle_only` priority
+   * (core/record/l1-scavenger.ts). One run at a time; a failed run simply stops and resumes next time.
+   */
+  private startL1Scavenger(instanceId: string): void {
+    const intervalMs = Number(process.env.TDAI_SCAVENGER_INTERVAL_MS ?? 30 * 60_000);
+    if (!Number.isFinite(intervalMs) || intervalMs <= 0) {
+      this.logger.info("L1 scavenger disabled (TDAI_SCAVENGER_INTERVAL_MS <= 0)");
+      return;
+    }
+    const run = async () => {
+      try {
+        this.core.setInstanceId(instanceId);
+        const { vdbConfig, mongoConfig } = await this.resolveStoreBackendConfigs(instanceId);
+        const pooled = await this.storePool!.getStore(instanceId, vdbConfig, mongoConfig);
+        const storage = await this.resolveStorageForInstance(instanceId);
+        const r = await this.core.scavengeL1WithStore(pooled.store, pooled.embedding, storage ?? undefined);
+        this.logger.info(
+          `[scavenger] checked ${r.windowsChecked} window(s), re-extracted ${r.gapsExtracted}, stored ${r.stored}` +
+          (r.error ? `, stopped: ${r.error}` : ""),
+        );
+      } catch (err) {
+        this.logger.warn(`[scavenger] run failed: ${err instanceof Error ? err.message : String(err)}`);
+      } finally {
+        if (!this.scavengerStopped) {
+          this.scavengerTimer = setTimeout(run, intervalMs);
+          this.scavengerTimer.unref?.();
+        }
+      }
+    };
+    this.scavengerTimer = setTimeout(run, Math.min(intervalMs, 5 * 60_000));
+    this.scavengerTimer.unref?.();
+    this.logger.info(`L1 scavenger scheduled every ${Math.round(intervalMs / 60_000)} min (instance=${instanceId})`);
+  }
+
   private buildTaskExecutor(): TaskExecutor {
     const core = this.core;
     const storePool = this.storePool!;

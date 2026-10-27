@@ -130,6 +130,11 @@ export async function extractL1Memories(params: {
      * a CleanContextRunner (decouples from OpenClaw runtime).
      */
     llmRunner?: LLMRunner;
+    /**
+     * Async job mode (llm-gateway): queue priority, and the idempotency key of this slice of
+     * conversation, e.g. `L1:<session>:<from>_<to>`. Extraction and dedup derive their own keys from it.
+     */
+    job?: { priority?: "high" | "normal" | "idle_only"; dedupKey?: string };
   };
   logger?: Logger;
   /** Plugin instance ID for metric reporting (optional — metrics skipped if absent) */
@@ -204,16 +209,25 @@ export async function extractL1Memories(params: {
       memoryPrompt: options.memoryPrompt,
       traceContext: { teamId, userId, agentId, sessionId },
       llmRunner: options.llmRunner,
+      job: options.job
+        ? { priority: options.job.priority, dedupKey: options.job.dedupKey ? `${options.job.dedupKey}:extract` : undefined }
+        : undefined,
     });
     scenes = outcome.scenes;
     earlyEmptyReason = outcome.emptyReason;
     logger?.debug?.(`${TAG} LLM detected ${scenes.length} scene(s)`);
   } catch (err) {
-    logger?.error(`${TAG} LLM extraction failed: ${err instanceof Error ? err.message : String(err)}`);
-    logger?.warn?.(
-      `${TAG} l1-empty reason=llm_error sessionKey=${sessionKey} msg=${err instanceof Error ? err.message.slice(0, 200) : String(err).slice(0, 200)}`,
-    );
-    return { success: false, extractedCount: 0, storedCount: 0, records: [], sceneNames: [] };
+    const msg = err instanceof Error ? err.message : String(err);
+    if (isDiscardedJob(err)) {
+      // The user dropped this slice in the gateway UI: skip it on purpose, so the cursor may move on.
+      logger?.warn?.(`${TAG} l1-empty reason=discarded sessionKey=${sessionKey} msg=${msg.slice(0, 200)}`);
+      return { success: true, extractedCount: 0, storedCount: 0, records: [], sceneNames: [] };
+    }
+    // Never report a failed call as an empty success: the caller would advance the cursor and the
+    // slice would be lost for good. Throw, so the cursor stays and the slice is tried again.
+    logger?.error(`${TAG} LLM extraction failed: ${msg}`);
+    logger?.warn?.(`${TAG} l1-failed reason=llm_error sessionKey=${sessionKey} msg=${msg.slice(0, 200)}`);
+    throw new L1ExtractionError(`L1 extraction failed for ${sessionKey}: ${msg}`, err);
   }
 
   // Flatten all memories across scenes
@@ -321,6 +335,9 @@ export async function extractL1Memories(params: {
         llmRunner: options.llmRunner,
         traceContext: { teamId, userId, agentId, sessionId },
         ...(teamId || userId || agentId || sessionId || taskId ? { filter: { teamId, userId, agentId, sessionId, taskId } } : {}),
+        ...(options.job
+          ? { job: { priority: options.job.priority, dedupKey: options.job.dedupKey ? `${options.job.dedupKey}:dedup` : undefined } }
+          : {}),
       });
       dedupLatencyMs = Date.now() - dedupStartMs;
 
@@ -359,8 +376,12 @@ export async function extractL1Memories(params: {
       });
 
     } catch (err) {
-      logger?.warn?.(`${TAG} Batch dedup failed, storing all as new: ${err instanceof Error ? err.message : String(err)}`);
-      storedRecords = await storeAllDirectly(memoriesWithIds, baseDir, sessionKey, sessionId, taskId, teamId, userId, agentId, logger, options.vectorStore, options.embeddingService, storage);
+      // L1 is all-or-nothing: extraction AND dedup must succeed before the cursor moves. Storing every
+      // memory as new here would leave duplicates once the slice is retried.
+      const msg = err instanceof Error ? err.message : String(err);
+      logger?.error(`${TAG} Batch dedup failed: ${msg}`);
+      logger?.warn?.(`${TAG} l1-failed reason=dedup_error sessionKey=${sessionKey} msg=${msg.slice(0, 200)}`);
+      throw new L1ExtractionError(`L1 dedup failed for ${sessionKey}: ${msg}`, err);
     }
   } else {
     storedRecords = await storeAllDirectly(memoriesWithIds, baseDir, sessionKey, sessionId, taskId, teamId, userId, agentId, logger, options.vectorStore, options.embeddingService, storage);
@@ -475,6 +496,22 @@ export async function extractL1Memories(params: {
 /**
  * Call LLM to extract scene-segmented memories from conversation messages.
  */
+/** An L1 step failed; the slice must be tried again, so the caller must not advance its cursor. */
+export class L1ExtractionError extends Error {
+  constructor(message: string, cause?: unknown) {
+    super(message, { cause });
+    this.name = "L1ExtractionError";
+  }
+}
+
+/** The LLM gateway reports that the user discarded this job (async job mode, see async-job-fetch.ts). */
+function isDiscardedJob(err: unknown): boolean {
+  for (let e: unknown = err, depth = 0; e && depth < 5; e = (e as { cause?: unknown }).cause, depth++) {
+    if (e instanceof Error && e.name === "LlmJobDiscardedError") return true;
+  }
+  return false;
+}
+
 async function callLlmExtraction(params: {
   newMessages: ConversationMessage[];
   backgroundMessages: ConversationMessage[];
@@ -488,8 +525,9 @@ async function callLlmExtraction(params: {
   llmRunner?: LLMRunner;
   /** langfuse 上报身份四元组（team/user/agent/session）。 */
   traceContext?: TraceContext;
+  job?: { priority?: "high" | "normal" | "idle_only"; dedupKey?: string };
 }): Promise<ParseExtractionOutcome> {
-  const { newMessages, backgroundMessages, previousSceneName, config, logger, model, promptMode = "chat", memoryPrompt, llmRunner, traceContext } = params;
+  const { newMessages, backgroundMessages, previousSceneName, config, logger, model, promptMode = "chat", memoryPrompt, llmRunner, traceContext, job } = params;
 
   const systemPrompt = composeMemorySystemPrompt(getExtractMemoriesSystemPrompt(promptMode), memoryPrompt);
   const userPrompt = formatExtractionPrompt({
@@ -516,6 +554,8 @@ async function callLlmExtraction(params: {
       systemPrompt,
       taskId: "l1-extraction",
       timeoutMs: 180_000,
+      ...(job?.priority ? { priority: job.priority } : {}),
+      ...(job?.dedupKey ? { dedupKey: job.dedupKey } : {}),
       ...traceParams,
     });
   } else {

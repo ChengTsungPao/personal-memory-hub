@@ -94,6 +94,7 @@ import {
 } from "./v2-schemas.js";
 import { stripSceneNavigation } from "../core/scene/scene-navigation.js";
 import { buildProfileIsolationScope, buildProfileStableId, DEFAULT_PROFILE_SCOPE } from "../core/profile/profile-scope.js";
+import { handlePipelineL1Status } from "./pipeline-l1-status.js";
 
 const TAG = "[tdai-gateway][v2]";
 const V2_PREFIX = "/v2";
@@ -284,6 +285,8 @@ export interface V2RouterDeps {
    * (status endpoint returns 404 in service mode).
    */
   pipelineWorker?: PipelineWorker;
+  /** Async job mode: the LLM gateway that runs L1 jobs (for /v2/pipeline/l1-status). */
+  llmJobs?: { baseUrl: string; apiKey: string };
 
   // ── Tenancy isolation (three-dim) ──
   //
@@ -466,6 +469,8 @@ const routeTable: Record<string, RouteHandler> = {
   [`${V2_PREFIX}/task/delete`]: handleTaskDelete, // @deprecated 改用 /v3/meta/task/delete
   // ── end @deprecated v2 entity 路由 ──
   [`${V2_PREFIX}/pipeline/status`]: handlePipelineStatus,
+  [`${V2_PREFIX}/pipeline/l1-status`]: (body, _auth, requestId, deps) =>
+    handlePipelineL1Status(body, requestId, deps.llmJobs),
 };
 
 export async function handleV2Route(

@@ -583,9 +583,9 @@ export function parseConfig(raw: Record<string, unknown> | undefined): MemoryTda
       promptMode: normalizePromptMode(str(personaGroup, "promptMode"), globalPromptMode),
     },
     pipeline: {
-      everyNConversations: num(pipelineGroup, "everyNConversations") ?? 5,
-      enableWarmup: bool(pipelineGroup, "enableWarmup") ?? true,
-      l1IdleTimeoutSeconds: num(pipelineGroup, "l1IdleTimeoutSeconds") ?? 600,
+      everyNConversations: num(pipelineGroup, "everyNConversations") ?? 15,
+      enableWarmup: bool(pipelineGroup, "enableWarmup") ?? false,
+      l1IdleTimeoutSeconds: num(pipelineGroup, "l1IdleTimeoutSeconds") ?? 1800,
       l2DelayAfterL1Seconds: num(pipelineGroup, "l2DelayAfterL1Seconds") ?? 10,
       l2MinIntervalSeconds: num(pipelineGroup, "l2MinIntervalSeconds") ?? 900,
       l2MaxIntervalSeconds: num(pipelineGroup, "l2MaxIntervalSeconds") ?? 3600,

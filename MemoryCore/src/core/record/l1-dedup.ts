@@ -74,8 +74,10 @@ export async function batchDedup(params: {
   filter?: IsolationFilter;
   /** langfuse 上报身份四元组（team/user/agent/session），透传给 llmRunner。 */
   traceContext?: TraceContext;
+  /** Async job mode: queue priority and idempotency key for the judgment call (see llm-runner.ts). */
+  job?: { priority?: "high" | "normal" | "idle_only"; dedupKey?: string };
 }): Promise<DedupDecision[]> {
-  const { memories, config, logger, model, promptMode = "chat", vectorStore, embeddingService, llmRunner, filter, traceContext } = params;
+  const { memories, config, logger, model, promptMode = "chat", vectorStore, embeddingService, llmRunner, filter, traceContext, job } = params;
   const topK = params.conflictRecallTopK ?? 5;
 
   if (memories.length === 0) {
@@ -131,7 +133,7 @@ export async function batchDedup(params: {
   }
 
   // Phase 2: Batch LLM judgment
-  return runLlmJudgment(matches, memories, config, logger, model, promptMode, llmRunner, traceContext);
+  return runLlmJudgment(matches, memories, config, logger, model, promptMode, llmRunner, traceContext, job);
 }
 
 /**
@@ -146,50 +148,57 @@ async function runLlmJudgment(
   promptMode: MemoryPromptMode,
   llmRunner?: LLMRunner,
   traceContext?: TraceContext,
+  job?: { priority?: "high" | "normal" | "idle_only"; dedupKey?: string },
 ): Promise<DedupDecision[]> {
   logger?.debug?.(`${TAG} Running batch conflict detection for ${memories.length} memories (promptMode=${promptMode})`);
 
+  // The LLM call itself must succeed: L1 is all-or-nothing (extraction AND dedup), so a failed call is
+  // thrown to the caller, which keeps the cursor and retries the whole slice later. Storing everything
+  // as new here would write duplicates that a retry then writes again.
+  const userPrompt = formatBatchConflictPrompt(matches);
+  const systemPrompt = getConflictDetectionSystemPrompt(promptMode);
+  let result: string;
+
+  // langfuse trace 语义：见 l1-extractor.ts 里的说明。dedup 是 L1 的子步骤，
+  // 用独立 name 便于在 UI 上区分 "抽取阶段" vs "去重判定阶段"。
+  const traceParams = buildTraceParams("memory.l1-dedup", traceContext);
+
+  if (llmRunner) {
+    // Use the host-neutral LLMRunner interface
+    result = await llmRunner.run({
+      prompt: userPrompt,
+      systemPrompt,
+      taskId: "l1-conflict-detection",
+      timeoutMs: 180_000,
+      ...(job?.priority ? { priority: job.priority } : {}),
+      ...(job?.dedupKey ? { dedupKey: job.dedupKey } : {}),
+      ...traceParams,
+    });
+  } else {
+    // Fallback: create CleanContextRunner (OpenClaw path)
+    const runner = new CleanContextRunner({
+      config,
+      modelRef: model,
+      enableTools: false,
+      logger,
+    });
+
+    result = await runner.run({
+      prompt: userPrompt,
+      systemPrompt,
+      taskId: "l1-conflict-detection",
+      timeoutMs: 180_000,
+      ...traceParams,
+    });
+  }
+
+  // The model answered; an answer that cannot be parsed would not get better on a retry, so it
+  // still falls back to storing everything as new.
   try {
-    const userPrompt = formatBatchConflictPrompt(matches);
-    const systemPrompt = getConflictDetectionSystemPrompt(promptMode);
-    let result: string;
-
-    // langfuse trace 语义：见 l1-extractor.ts 里的说明。dedup 是 L1 的子步骤，
-    // 用独立 name 便于在 UI 上区分 "抽取阶段" vs "去重判定阶段"。
-    const traceParams = buildTraceParams("memory.l1-dedup", traceContext);
-
-    if (llmRunner) {
-      // Use the host-neutral LLMRunner interface
-      result = await llmRunner.run({
-        prompt: userPrompt,
-        systemPrompt,
-        taskId: "l1-conflict-detection",
-        timeoutMs: 180_000,
-        ...traceParams,
-      });
-    } else {
-      // Fallback: create CleanContextRunner (OpenClaw path)
-      const runner = new CleanContextRunner({
-        config,
-        modelRef: model,
-        enableTools: false,
-        logger,
-      });
-
-      result = await runner.run({
-        prompt: userPrompt,
-        systemPrompt,
-        taskId: "l1-conflict-detection",
-        timeoutMs: 180_000,
-        ...traceParams,
-      });
-    }
-
-    const decisions = parseBatchResult(result, memories, logger);
-    return decisions;
+    return parseBatchResult(result, memories, logger);
   } catch (err) {
     logger?.warn?.(
-      `${TAG} Batch conflict detection failed, defaulting all to store: ${err instanceof Error ? err.message : String(err)}`,
+      `${TAG} Batch conflict detection unparsable, defaulting all to store: ${err instanceof Error ? err.message : String(err)}`,
     );
     return memories.map((m) => ({
       record_id: m.record_id,

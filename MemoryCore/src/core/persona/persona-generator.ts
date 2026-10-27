@@ -22,7 +22,27 @@ import { composeMemorySystemPrompt } from "../memory-prompt/composer.js";
 
 const TAG = "[memory-tdai] [persona]";
 
+/** Memories read into one persona update at most (the scene that crosses the limit is still included). */
+export const DEFAULT_MAX_MEMORIES_PER_UPDATE = 50;
+
+function sceneTime(iso: string): number {
+  const t = new Date(iso).getTime();
+  return Number.isNaN(t) ? 0 : t;
+}
+
+/** Memories in a scene block: its list items (at least 1, so every scene counts toward the limit). */
+export function countMemories(sceneMarkdown: string): number {
+  const items = sceneMarkdown.split("\n").filter((line) => /^\s*(?:[-*+]|\d+\.)\s+\S/.test(line)).length;
+  return Math.max(1, items);
+}
+
 export class PersonaGenerator {
+  /**
+   * Set by generateLocalPersona when the chunk limit left changed scenes for later: the `updated` time of
+   * the last scene it covered. The checkpoint must advance to this time only, not to "now".
+   */
+  coveredUntil: string | undefined;
+  private maxMemoriesPerUpdate: number;
   private dataDir: string;
   private runner: LLMRunner;
   private logger: Logger | undefined;
@@ -55,7 +75,10 @@ export class PersonaGenerator {
     storage?: StorageAdapter;
     /** langfuse 上报身份四元组（team/user/agent/session），填充 trace 顶级字段。 */
     traceContext?: TraceContext;
+    /** Chunk limit per update (default 50 memories). */
+    maxMemoriesPerUpdate?: number;
   }) {
+    this.maxMemoriesPerUpdate = Math.max(1, opts.maxMemoriesPerUpdate ?? DEFAULT_MAX_MEMORIES_PER_UPDATE);
     this.dataDir = opts.dataDir;
     this.logger = opts.logger;
     this.promptMode = opts.promptMode ?? "chat";
@@ -117,11 +140,25 @@ export class PersonaGenerator {
       if (Number.isNaN(updatedMs) || Number.isNaN(personaMs)) return true;
       return updatedMs > personaMs;
     });
+    // Oldest change first, so a chunk-limited run covers a contiguous stretch of time (see coveredUntil).
+    changedScenes.sort((a, b) => sceneTime(a.updated) - sceneTime(b.updated));
     this.logger?.debug?.(`${TAG} Scene index: ${index.length} total, ${changedScenes.length} changed since last persona`);
 
-    // 3. Read changed scene contents (full raw content including META, matching Python reference)
+    // 3. Read changed scene contents (full raw content including META, matching Python reference),
+    //    at most ~maxMemoriesPerUpdate memories per run: a backlog of hundreds made the prompt so long
+    //    that generation timed out every time. The rest is left for the next run.
+    this.coveredUntil = undefined;
+    let memoriesIncluded = 0;
     const changedSceneContents: string[] = [];
-    for (const entry of changedScenes) {
+    for (const [i, entry] of changedScenes.entries()) {
+      if (changedSceneContents.length > 0 && memoriesIncluded >= this.maxMemoriesPerUpdate) {
+        this.coveredUntil = changedScenes[i - 1].updated;
+        this.logger?.info?.(
+          `${TAG} Chunk limit: ${memoriesIncluded} memories from ${changedSceneContents.length} scene(s) this run, ` +
+          `${changedScenes.length - i} changed scene(s) left for the next run`,
+        );
+        break;
+      }
       try {
         let raw: string | null;
         if (this.storage) {
@@ -132,6 +169,7 @@ export class PersonaGenerator {
           raw = await fs.default.readFile(path.default.join(this.dataDir, "scene_blocks", entry.filename), "utf-8");
         }
         if (!raw) continue;
+        memoriesIncluded += countMemories(raw);
         changedSceneContents.push(
           `### [${changedSceneContents.length + 1}] ${entry.filename}\n\n\`\`\`markdown\n${raw}\n\`\`\``,
         );
@@ -298,7 +336,7 @@ export class PersonaGenerator {
 
     const cpManager = new CheckpointManager(this.dataDir, this.logger, this.storage);
     const cp = await cpManager.read();
-    await cpManager.markPersonaGenerated(cp.total_processed);
+    await cpManager.markPersonaGenerated(cp.total_processed, { coveredUntil: this.coveredUntil });
     return true;
   }
 }

@@ -1099,6 +1099,35 @@ export class TdaiCore {
   }
 
   /**
+   * One run of the L1 idle scavenger (pipeline-factory.ts createL1Scavenger): re-extract conversation
+   * windows below the L1 cursor that no L1 memory covers, at `idle_only` priority. Standalone LLM only.
+   */
+  async scavengeL1WithStore(
+    store: IMemoryStore,
+    embedding: EmbeddingService,
+    storage?: StorageAdapter,
+  ): Promise<import("../utils/pipeline-factory.js").L1ScavengeResult> {
+    const useStandaloneRunner = this.cfg.llm.enabled || this.hostAdapter.hostType !== "openclaw";
+    if (!useStandaloneRunner) return { windowsChecked: 0, gapsExtracted: 0, stored: 0 };
+    let runnerFactory = this.runnerFactory;
+    if (this.shouldOverrideRunnerFactory(useStandaloneRunner)) {
+      runnerFactory = new StandaloneLLMRunnerFactory({ config: this.resolveRuntimeLlm(), logger: this.logger });
+    }
+    const trackingFactory = new MetricTrackingRunnerFactory(runnerFactory, () => this.instanceId);
+    const { createL1Scavenger } = await import("../utils/pipeline-factory.js");
+    return createL1Scavenger({
+      pluginDataDir: this.dataDir,
+      cfg: this.cfg,
+      vectorStore: store,
+      embeddingService: embedding,
+      logger: this.logger,
+      getInstanceId: () => this.instanceId,
+      llmRunner: trackingFactory.createRunner({ enableTools: false }),
+      storage: storage ?? this.getStorage(),
+    })();
+  }
+
+  /**
    * Run L2 scene extraction using an externally provided Store.
    */
   async runL2WithStore(sessionKey: string, store: IMemoryStore, storage?: StorageAdapter, cursor?: string): Promise<{ creditUsed: number; skipped: boolean }> {

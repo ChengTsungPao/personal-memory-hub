@@ -1181,6 +1181,8 @@ export function registerChatMemoryRoutes(api: Hono, deps: PanelDeps): void {
               id: m.id ?? "",
               role: typeof m.role === "string" ? m.role : "msg",
               title: `${m.role ?? "msg"} @ ${m.session_id ?? ""}`,
+              // lets the page match a message to its L1 job (/chat-memory/l1-status)
+              session_id: typeof m.session_id === "string" ? m.session_id : undefined,
               body:
                 typeof m.content === "string"
                   ? m.content
@@ -1678,6 +1680,47 @@ export function registerChatMemoryRoutes(api: Hono, deps: PanelDeps): void {
   // 权限：读权限（owner / team-shared / borrowed，与 /chat-memory/layer 一致，
   // 搜索属于读操作）。统一返回 { items, total }，item 附带 score（相关度）。
   // ==========================================================================
+  // POST /chat-memory/l1-status — L1 extraction state of the loaded conversation (read permission).
+  //   body: { block_id, session_ids: string[] }
+  //   → kernel /v2/pipeline/l1-status: slices { session_id, from, to (recorded_at ms), status }
+  //     pending = queued / running at the LLM gateway (🟡), failed = dead letter (🔴).
+  //   enabled=false when the kernel does not run L1 as async gateway jobs.
+  // ==========================================================================
+  api.post("/chat-memory/l1-status", validatePanelMetaHeaders(deps), async (c) => {
+    const ctx = buildCtx(c);
+    const body = await readJson(c);
+    const blockId = requiredBlockId(body);
+    if (!blockId) return respondControlError(c, 400, "MISSING_BLOCK_ID");
+    const sessionIds = Array.isArray(body?.session_ids)
+      ? (body.session_ids as unknown[]).filter((s): s is string => typeof s === "string" && s.length > 0).slice(0, 500)
+      : [];
+
+    const parsed = parseChatMemoryAssetId(blockId);
+    if (!parsed) return respondEnvelope(c, okEnvelope(c, { enabled: false, slices: [] }));
+
+    const meUserId = await resolveCallerUserId(deps, ctx);
+    if (!meUserId) return respondControlError(c, 401, "INVALID_USER_KEY");
+    const assetEnv = await deps.metaKernel.invoke("asset/get", { asset_id: blockId }, ctx);
+    if (assetEnv.code === 404 || (assetEnv.code === 0 && !assetEnv.data)) {
+      return respondControlError(c, 404, "BLOCK_NOT_FOUND");
+    }
+    if (assetEnv.code !== 0) return respondEnvelope(c, assetEnv);
+    const asset = assetEnv.data as AssetRaw;
+    if (asset.asset_type !== "chat_memory") return respondControlError(c, 400, "NOT_CHAT_MEMORY");
+    const canRead = await authorizeChatMemoryRead(deps, ctx, asset, meUserId, blockId);
+    if (!canRead) return respondControlError(c, 403, "ASSET_NOT_ACCESSIBLE");
+
+    const cred = toKernelCredentials(ctx, { timeoutMs: 10_000 });
+    const env = await deps.kernelHttp.postEnvelope<{ enabled?: boolean; slices?: unknown[] }>(
+      "/v2/pipeline/l1-status",
+      { team_id: parsed.teamId, agent_id: parsed.agentId, user_id: asset.owner_user_id, session_ids: sessionIds },
+      cred,
+    );
+    // An older kernel without the endpoint: no status, not an error for the page.
+    if (env.code === 404) return respondEnvelope(c, okEnvelope(c, { enabled: false, slices: [] }));
+    return respondEnvelope(c, env);
+  });
+
   api.post("/chat-memory/search", validatePanelMetaHeaders(deps), async (c) => {
     const ctx = buildCtx(c);
     const body = await readJson(c);

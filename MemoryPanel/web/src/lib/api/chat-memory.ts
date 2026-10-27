@@ -31,6 +31,20 @@ export interface ChatMemoryLayerItem {
   refs?: string[];
   /** 条目创建/记录时间（ISO8601），backend 从 recorded_at_ms / created_time_ms / updated_at 转换 */
   created_at?: string;
+  /** L0 only: the conversation session the message belongs to */
+  session_id?: string;
+}
+
+/** A slice of conversation whose L1 extraction is still running or failed (see /chat-memory/l1-status). */
+export interface L1StatusSlice {
+  session_id: string;
+  /** L0 recorded_at range in ms: from (exclusive) .. to (inclusive) */
+  from: number;
+  to: number;
+  status: 'pending' | 'failed';
+  kind: 'pipeline' | 'scavenger';
+  error?: string;
+  attempts?: number;
 }
 
 /** L1 语义搜索命中项：在分层条目基础上附带相关度 score（越大越相关） */
@@ -198,5 +212,12 @@ export const chatMemoryApi = {
       query,
       limit,
       ...(type ? { type } : {}),
+    }),
+
+  /** L1 extraction state of these sessions: slices that are pending (🟡) or failed (🔴). */
+  l1Status: (blockId: string, sessionIds: string[]) =>
+    chatMemoryCall<{ enabled: boolean; reachable?: boolean; slices: L1StatusSlice[] }>('l1-status', {
+      block_id: blockId,
+      session_ids: sessionIds,
     }),
 };

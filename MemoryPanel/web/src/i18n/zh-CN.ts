@@ -714,6 +714,8 @@ export const zhCN = {
     '當前時間範圍內在 {{layer}} 層暫無條目，可調整右上角的時間篩選範圍試試。',
   'memory.detail.rangeTooLarge': '記憶條數過多，建議縮短篩選的時間範圍',
   'memory.detail.loadMore': '載入更早的對話',
+  'memory.detail.l1Pending': '記憶抽取排隊中或執行中',
+  'memory.detail.l1Failed': '記憶抽取失敗，已擱置等待閒置補做',
   'memory.detail.allLoaded': '已載入全部對話',
   'memory.detail.pageInfo': '第 {{page}} / {{total}} 頁 · 當前 {{current}} 條 / 共 {{total2}} 條',
   'memory.detail.prevPage': '上一頁',
