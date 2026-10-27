@@ -38,6 +38,15 @@ import {
   ensureValidActiveTeamId,
 } from '@/services/backendStore';
 
+/** A Claude Code session agent (metadata `{"kind":"session"}`), see agents/claude-code/lib/session.mjs. */
+function isSessionAgent(agent: { metadata_json?: string | null }): boolean {
+  try {
+    return JSON.parse(agent.metadata_json || '{}')?.kind === 'session';
+  } catch {
+    return false;
+  }
+}
+
 // ========================= 事件常量 =========================
 
 const BACKEND_REFRESH_EVENT = 'tdai-memory.backend-refresh';
@@ -180,7 +189,9 @@ export const useBackendStore = create<BackendState>((set, get) => ({
         const backendAgents = await agentsApi.list(teamId);
         // 登出/清缓存后返回的旧会话结果：丢弃，不写入 store
         if (get().epoch !== epoch) return [];
-        const adapted = backendAgents.map((ba, i) => adaptAgent(ba, i));
+        // Session agents (one per Claude Code session) only hold that session's memory block,
+        // which is listed under its repo agent or New-chat; they are not agents to pick.
+        const adapted = backendAgents.filter((ba) => !isSessionAgent(ba)).map((ba, i) => adaptAgent(ba, i));
         set((s) => ({
           agentsByTeam: { ...s.agentsByTeam, [teamId]: adapted },
           agentsLoadedTeamIds: new Set(s.agentsLoadedTeamIds).add(teamId),
