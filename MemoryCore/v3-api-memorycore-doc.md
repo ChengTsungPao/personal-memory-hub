@@ -940,6 +940,11 @@ upsert 知识明细（幂等）。
 | `POST /agent-fixed-asset/list` | 分页列出绑定 |
 | `POST /agent-fixed-asset/list-with-detail` | 带详情 + 可见性过滤 |
 | `POST /agent-fixed-asset/summary-by-agents` | 多 agent 按类型聚合计数 |
+| `POST /agent-fixed-asset/add` | 追加一条绑定 `{agent_id, binding}`，保留其他绑定；已存在时 no-op |
+| `POST /agent-fixed-asset/remove` | 删除一条绑定 `{agent_id, asset_id}`，保留其他绑定；不存在时 no-op |
+| `POST /agent-fixed-asset/bindings-of-asset` | 某资产被哪些 agent 绑定 `{asset_id}` |
+
+Session 记忆块：`metadata_json` 为 `{"kind":"session"}` 的 agent 是某个会话专属的隐藏 agent，它的 chat_memory 会绑到 repo agent 或 New-chat 上。归档一个 agent 时，只解除它对其他 agent 记忆块的绑定；解除后没有任何其他 agent 绑定的 session 记忆块，连同其 session agent 一起归档。
 
 **set 请求体**：`agent_id`、`bindings: [{ asset_id, asset_type, injection_mode?, priority?, created_by }]`。
 **list-with-detail 请求体**：`agent_id`、`apply_visibility_filter?`、`touch_usage?` + 分页。

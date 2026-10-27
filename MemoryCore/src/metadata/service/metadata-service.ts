@@ -93,7 +93,7 @@ import type {
 } from "../types.js";
 import { formatListResult, paginateArray, resolvePagination, wrapPaginated, DEFAULT_PAGINATION } from "../pagination.js";
 import { generateId, ID_PREFIX } from "../utils/id-generator.js";
-import { buildChatMemoryAssetId, resolveChatMemoryAgentId } from "../utils/chat-memory-asset.js";
+import { buildChatMemoryAssetId, isSessionAgent, resolveChatMemoryAgentId } from "../utils/chat-memory-asset.js";
 
 // ── 默认 Agent / Team 常量 ──
 
@@ -1017,6 +1017,11 @@ export class MetadataService {
   async archiveAgent(agentId: string): Promise<AgentEntity> {
     const existing = await this.getAgentById(agentId);
     if (!existing) throw new MetadataError("agent_not_found", `agent not found: ${agentId}`);
+    const selfMemoryAssetId = buildChatMemoryAssetId(existing.team_id, existing.agent_id);
+    // Other agents' memory blocks bound here (session blocks bound to a repo agent or New-chat).
+    const borrowed = (
+      await this.store.listAgentFixedAssets(agentId, null, { assetTypes: ["chat_memory"] })
+    ).items.filter((b) => b.asset_id !== selfMemoryAssetId);
     const archived = await this.updateAgent(agentId, { status: "inactive" });
 
     if (this._chatMemoryContentCleaner) {
@@ -1026,8 +1031,13 @@ export class MetadataService {
       });
     }
 
-    const selfMemoryAssetId = buildChatMemoryAssetId(existing.team_id, existing.agent_id);
     await this.store.deleteAssets([selfMemoryAssetId]);
+
+    // Only unbind those blocks; one that no other agent binds any more goes with this agent.
+    for (const b of borrowed) {
+      await this.store.removeAgentFixedAsset(agentId, b.asset_id);
+      await this.archiveSessionBlockIfUnbound(b.asset_id);
+    }
     return archived;
   }
 
@@ -1354,6 +1364,36 @@ export class MetadataService {
       );
     }
     await this.store.addAgentFixedAsset(agentId, b);
+  }
+
+  /** 删除一条 agent 绑定（保留其他绑定）。幂等：没有这条绑定时 no-op。 */
+  async removeAgentFixedAsset(agentId: string, assetId: string): Promise<void> {
+    const agent = await this.getAgentById(agentId);
+    if (!agent) throw new MetadataError("agent_not_found", `agent not found: ${agentId}`);
+    await this.store.removeAgentFixedAsset(agentId, assetId);
+  }
+
+  /** 某资产被哪些 agent 绑定。 */
+  async listAssetBindings(assetId: string): Promise<FixedAssetBindingEntity[]> {
+    return this.store.listAssetBindings(assetId);
+  }
+
+  /**
+   * A session memory block lives as long as some agent other than its own session agent binds it.
+   * When the last such binding goes, archive the session agent, which clears the block's content.
+   */
+  private async archiveSessionBlockIfUnbound(assetId: string): Promise<void> {
+    const bindings = await this.store.listAssetBindings(assetId);
+    let owner: AgentEntity | null = null;
+    for (const b of bindings) {
+      const agent = await this.getAgentById(b.agent_id);
+      if (agent && isSessionAgent(agent) && buildChatMemoryAssetId(agent.team_id, agent.agent_id) === assetId) {
+        owner = agent;
+      }
+    }
+    if (!owner || owner.status !== "active") return;
+    if (bindings.some((b) => b.agent_id !== owner!.agent_id)) return;
+    await this.archiveAgent(owner.agent_id);
   }
 
   /**
@@ -2115,6 +2155,20 @@ export class MetadataService {
   ): Promise<void> {
     await this.assertCallerIsAgentOwnerOrTeamAdmin(ctx, agentId);
     return this.setAgentFixedAssets(agentId, bindings);
+  }
+
+  async addAgentFixedAssetForCaller(
+    agentId: string,
+    binding: FixedAssetBindingInput,
+    ctx: V3AuthContext,
+  ): Promise<void> {
+    await this.assertCallerIsAgentOwnerOrTeamAdmin(ctx, agentId);
+    return this.addAgentFixedAsset(agentId, binding);
+  }
+
+  async removeAgentFixedAssetForCaller(agentId: string, assetId: string, ctx: V3AuthContext): Promise<void> {
+    await this.assertCallerIsAgentOwnerOrTeamAdmin(ctx, agentId);
+    return this.removeAgentFixedAsset(agentId, assetId);
   }
 
   async grantAclForCaller(input: GrantAclInput, ctx: V3AuthContext): Promise<AclEntity> {

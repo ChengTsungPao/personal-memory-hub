@@ -1484,6 +1484,17 @@ export class SqliteMetadataStore implements IMetadataStore {
     );
   }
 
+  removeAgentFixedAsset(agentId: string, assetId: string): void {
+    this.run("DELETE FROM meta_agent_fixed_assets WHERE agent_id = ? AND asset_id = ?", agentId, assetId);
+  }
+
+  listAssetBindings(assetId: string): FixedAssetBindingEntity[] {
+    return this.all<FixedAssetBindingEntity>(
+      "SELECT * FROM meta_agent_fixed_assets WHERE asset_id = ? ORDER BY created_at ASC",
+      assetId,
+    );
+  }
+
   getAgentFixedAsset(agentId: string, assetId: string): FixedAssetBindingEntity | null {
     return this.get<FixedAssetBindingEntity>(
       "SELECT * FROM meta_agent_fixed_assets WHERE agent_id = ? AND asset_id = ?",
