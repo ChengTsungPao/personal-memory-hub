@@ -263,15 +263,15 @@ generate_user_key() {
 # 探测可访问 memory-core 的端点（宿主机 127.0.0.1 或容器内网络别名 / host.docker.internal）
 detect_core_endpoint() {
   local ep="http://127.0.0.1:${MEMORY_CORE_PORT}"
-  if /usr/bin/curl -sS -o /dev/null --max-time 1 "$ep/health" 2>/dev/null; then
+  if "$CURL" -sS -o /dev/null --max-time 1 "$ep/health" 2>/dev/null; then
     echo "$ep"
     return
   fi
-  if /usr/bin/curl -sS -o /dev/null --max-time 1 "http://memory-core:8420/health" 2>/dev/null; then
+  if "$CURL" -sS -o /dev/null --max-time 1 "http://memory-core:8420/health" 2>/dev/null; then
     echo "http://memory-core:8420"
     return
   fi
-  if /usr/bin/curl -sS -o /dev/null --max-time 1 "http://host.docker.internal:${MEMORY_CORE_PORT}/health" 2>/dev/null; then
+  if "$CURL" -sS -o /dev/null --max-time 1 "http://host.docker.internal:${MEMORY_CORE_PORT}/health" 2>/dev/null; then
     echo "http://host.docker.internal:${MEMORY_CORE_PORT}"
     return
   fi
@@ -283,7 +283,7 @@ CORE_ENDPOINT="$(detect_core_endpoint)"
 verify_user_key() {
   local key="$1"
   local code
-  code=$(/usr/bin/curl -sS -o /dev/null -w "%{http_code}" --max-time 5 \
+  code=$("$CURL" -sS -o /dev/null -w "%{http_code}" --max-time 5 \
     -X POST -H "Content-Type: application/json" \
     -H "x-tdai-service-id: default" \
     ${MEMORY_CORE_GATEWAY_API_KEY:+-H "Authorization: Bearer ${MEMORY_CORE_GATEWAY_API_KEY}"} \
@@ -304,12 +304,16 @@ fi
 
 init_body=$(printf '{"username":"%s","user_key":"%s"}' \
   "$MEMORY_CORE_ADMIN_USERNAME" "$ADMIN_KEY")
-init_resp=$(/usr/bin/curl -sS -o /tmp/init-admin.$$ -w "%{http_code}" \
+# 响应体与状态码一起走 stdout（最后一行是状态码），不落 /tmp 文件：
+# Windows 上原生 curl.exe 不认识 Git Bash 的 /tmp。
+init_out=$("$CURL" -sS -w $'\n%{http_code}' \
   -X POST -H "Content-Type: application/json" \
   ${MEMORY_CORE_GATEWAY_API_KEY:+-H "Authorization: Bearer ${MEMORY_CORE_GATEWAY_API_KEY}"} \
   -H "x-tdai-service-id: default" \
   "${CORE_ENDPOINT}/v3/internal/meta/user/init-admin" \
   -d "$init_body" 2>/dev/null || echo "000")
+init_resp="${init_out##*$'\n'}"
+init_resp_body="${init_out%$'\n'*}"
 
 case "$init_resp" in
   200)
@@ -331,10 +335,9 @@ case "$init_resp" in
     ;;
   *)
     warn "init-admin 返回 HTTP=${init_resp}，可能需要手动排查："
-    cat /tmp/init-admin.$$ 2>/dev/null; echo
+    printf '%s\n' "$init_resp_body"
     ;;
 esac
-rm -f /tmp/init-admin.$$
 
 # ── 校验 admin key 可用 ─────────────────────────────────────────
 if [[ -s "$ADMIN_KEY_FILE" ]]; then

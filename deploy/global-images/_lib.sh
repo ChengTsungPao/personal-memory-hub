@@ -4,6 +4,10 @@
 
 set -euo pipefail
 
+# Windows Git Bash：关闭 MSYS 路径转换，否则 docker 的 -e / -v 参数里的
+# /data/... 会被改写成 C:/Program Files/Git/data/...（数据目录与配置挂载全错）。
+export MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*'
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ENV_FILE="${ENV_FILE:-$SCRIPT_DIR/.env}"
 
@@ -504,6 +508,11 @@ to_docker_host_path() {
   fi
   if [[ -n "${HOST_DEPLOY_DIR:-}" && "$p" == /deploy* ]]; then
     echo "${HOST_DEPLOY_DIR}${p#/deploy}"
+    return
+  fi
+  # Git Bash：/c/Users/... → C:/Users/...（已关闭 MSYS 路径转换，docker 不会自动改写）
+  if command -v cygpath >/dev/null 2>&1; then
+    cygpath -m "$p"
     return
   fi
   echo "$p"
