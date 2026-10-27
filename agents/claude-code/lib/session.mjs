@@ -297,7 +297,8 @@ export async function bindSession(cfg, sessionId, cwd, edit) {
   // Tag the block with its repos (the panel shows them) and keep the manual edits with it.
   const tags = [...repos.values()];
   const next = { ...sessionMeta, cwd: cwd ?? sessionMeta.cwd ?? "", repos: tags, added, removed };
-  const name = sessionName(tags, sessionId);
+  // A name set by hand (metadata custom_name) is kept; otherwise the name follows the repos.
+  const name = sessionMeta.custom_name ? session.name : sessionName(tags, sessionId);
   if (JSON.stringify(next) !== JSON.stringify(sessionMeta) || name !== session.name) {
     await meta(cfg, "agent/update", { agent_id: session.agent_id, name, metadata_json: JSON.stringify(next) });
   }

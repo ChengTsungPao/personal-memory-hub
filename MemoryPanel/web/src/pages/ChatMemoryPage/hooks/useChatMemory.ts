@@ -127,7 +127,10 @@ export function useChatMemory(props: { activeTeamId?: string | null } = {}) {
         res = await chatMemoryApi.teamAssets(activeTeamId);
       }
       if (seq !== fetchSeqRef.current) return; // 已被后续请求取代
-      const mapped: MemoryBlock[] = res.items.map((b) => ({
+      // A repo agent's or New-chat's own built-in block stays empty: its memory lives in the
+      // session blocks bound to it. Listing it only showed a block that cannot be removed.
+      const ownBlock = scopeTab === 'fixed' ? `chat_memory-${activeTeamId}-${agentFilter}` : '';
+      const mapped: MemoryBlock[] = res.items.filter((b) => b.id !== ownBlock).map((b) => ({
         id: b.id,
         title: b.title,
         summary: b.summary ?? '',

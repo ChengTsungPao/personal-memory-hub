@@ -197,11 +197,12 @@ test("mem: repo rm keeps a repo out after the next scan, and add brings it back"
 
 test("mem: repo rm by hash needs 7+ characters, so a short name never matches a hash", async () => {
   const root = tmp();
-  const a = repoAt(makeRepo(path.join(root, "a")));
+  // Named so that no single hex character equals the name.
+  const a = repoAt(makeRepo(path.join(root, "repo-x")));
   const { sessionAgentId } = await bindSession(cfg, "sess-6", root);
 
   await assert.rejects(editRepos(cfg, "sess-6", root, "rm", a.hash.slice(0, 1)), /沒有綁定/);
-  assert.deepEqual(boundTo(sessionAgentId), ["a"]);
+  assert.deepEqual(boundTo(sessionAgentId), ["repo-x"]);
   await editRepos(cfg, "sess-6", root, "rm", a.hash.slice(0, 7));
   assert.deepEqual(boundTo(sessionAgentId), ["New-chat"]);
 });
@@ -243,6 +244,18 @@ test("a block is named after its repos and renamed when they change", async () =
   makeRepo(path.join(root, "b"));
   await bindSession(cfg, "sess-9abcdef", root);
   assert.equal(agents.get(sessionAgentId).name, "a + b · sess-9ab");
+});
+
+test("a name set by hand is kept when the repos change", async () => {
+  const root = tmp();
+  const { sessionAgentId } = await bindSession(cfg, "sess-11abcdef", root);
+  const block = agents.get(sessionAgentId);
+  block.name = "Currently · sess-11a";
+  block.metadata_json = JSON.stringify({ ...JSON.parse(block.metadata_json), custom_name: true });
+  makeRepo(path.join(root, "a"));
+  await bindSession(cfg, "sess-11abcdef", root);
+  assert.equal(agents.get(sessionAgentId).name, "Currently · sess-11a");
+  assert.deepEqual(boundTo(sessionAgentId), ["a"]);
 });
 
 test("the New-chat agent made before session blocks is adopted, not duplicated", async () => {
