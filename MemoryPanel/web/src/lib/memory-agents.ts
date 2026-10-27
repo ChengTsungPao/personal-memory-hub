@@ -48,3 +48,14 @@ export function repoAgentLabel(agent: WithMeta & { name: string }, all: Array<{ 
 export function nameLabel(agent: { name: string; id: string }, all: Array<{ name: string }>): string {
   return all.filter((a) => a.name === agent.name).length < 2 ? agent.name : `${agent.name}（${agent.id}）`;
 }
+
+/** A repo agent's link (recorded by the hooks from the repo's origin remote), or "". */
+export function repoUrl(agent: WithMeta | undefined): string {
+  if (!agent) return '';
+  try {
+    const url = JSON.parse(agent.metadata_json || '{}')?.url;
+    return typeof url === 'string' && /^https?:\/\//.test(url) ? url : '';
+  } catch {
+    return '';
+  }
+}

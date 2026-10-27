@@ -8,6 +8,8 @@ interface AssetPageHeaderProps {
   agent?: ReactNode;
   actions?: ReactNode;
   subtitle?: ReactNode;
+  /** Shown next to the title, e.g. a link to the selected repo. */
+  titleExtra?: ReactNode;
 }
 
 /**
@@ -16,12 +18,15 @@ interface AssetPageHeaderProps {
  * 仅负责统一标题、资产范围、Agent 筛选与操作栏的视觉编排；各资产页面仍自行维护
  * 数据请求、权限判断和按钮可用状态，避免把不同资产的业务语义耦合到通用组件中。
  */
-export function AssetPageHeader({ title, scope, agent, actions, subtitle }: AssetPageHeaderProps) {
+export function AssetPageHeader({ title, scope, agent, actions, subtitle, titleExtra }: AssetPageHeaderProps) {
   return (
     <Card className="_asset-page-header">
       <Card.Body>
         <div className="_asset-page-header-main">
-          <h2 className="_asset-page-header-title">{title}</h2>
+          <div className="_asset-page-header-heading">
+            <h2 className="_asset-page-header-title">{title}</h2>
+            {titleExtra}
+          </div>
           <div className="_asset-page-header-right">
             <div className="_asset-page-header-filters">
               {scope}

@@ -59,7 +59,25 @@ export function repoAt(dir) {
     remote.replace(/\.git$/, "").split(/[/:]/).filter(Boolean).pop() ||
     path.basename(common ? path.dirname(common) : top) ||
     path.basename(top);
-  return { hash: roots[0], name, dir: top };
+  return { hash: roots[0], name, dir: top, url: browserUrl(remote) };
+}
+
+/**
+ * A remote URL as a link to open in a browser: `git@github.com:o/r.git` and
+ * `https://github.com/o/r.git` both become `https://github.com/o/r`. Empty when there is no
+ * remote or it is not a web host (a local path).
+ */
+export function browserUrl(remote) {
+  if (!remote) return "";
+  const scp = /^[\w.-]+@([^:/]+):(.+)$/.exec(remote); // git@host:owner/repo
+  let url = scp ? `https://${scp[1]}/${scp[2]}` : remote;
+  if (!/^https?:\/\//.test(url)) {
+    const ssh = /^ssh:\/\/(?:[^@/]+@)?([^/:]+)(?::\d+)?\/(.+)$/.exec(url);
+    if (!ssh) return "";
+    url = `https://${ssh[1]}/${ssh[2]}`;
+  }
+  // Never keep credentials (https://user:token@host/…) in the stored link.
+  return url.replace(/\/+$/, "").replace(/\.git$/, "").replace(/^(https?:\/\/)[^@/]+@/, "$1");
 }
 
 /** The repos a session folder belongs to: the one it is in, plus repos one level down. */
@@ -238,7 +256,7 @@ export async function bindSession(cfg, sessionId, cwd, edit) {
 
   // Repos: found in the folder, plus manual adds, minus manual removals.
   const repos = new Map();
-  for (const r of findRepos(cwd)) repos.set(r.hash, { hash: r.hash, name: r.name });
+  for (const r of findRepos(cwd)) repos.set(r.hash, { hash: r.hash, name: r.name, ...(r.url ? { url: r.url } : {}) });
   for (const r of added) repos.set(r.hash, r);
   for (const hash of removed) repos.delete(hash);
 
@@ -248,10 +266,15 @@ export async function bindSession(cfg, sessionId, cwd, edit) {
       cacheId: state.repoAgents[repo.hash],
       match: (m) => m.kind === "repo" && m.root_commit === repo.hash,
       name: repo.name,
-      metadata: { kind: "repo", root_commit: repo.hash },
+      metadata: { kind: "repo", root_commit: repo.hash, ...(repo.url ? { url: repo.url } : {}) },
       listAgents,
     });
     state.repoAgents[repo.hash] = agent.agent_id;
+    // Keep the repo's link on its agent (the panel shows it); a repo may gain or change its remote.
+    const agentMeta = parseMeta(agent);
+    if (repo.url && agentMeta.url !== repo.url) {
+      await meta(cfg, "agent/update", { agent_id: agent.agent_id, metadata_json: JSON.stringify({ ...agentMeta, url: repo.url }) });
+    }
     targets.push({ agent_id: agent.agent_id, name: agent.name });
   }
   if (targets.length === 0) {
@@ -406,10 +429,10 @@ export async function editRepos(cfg, sessionId, cwd, op, ref) {
     repo = repoAt(path.resolve(cwd || ".", ref));
     if (!repo) {
       const agent = (await listTeamAgents(cfg)).find((a) => parseMeta(a).kind === "repo" && a.name === ref);
-      if (agent) repo = { hash: parseMeta(agent).root_commit, name: agent.name };
+      if (agent) repo = { hash: parseMeta(agent).root_commit, name: agent.name, url: parseMeta(agent).url };
     }
     if (!repo) throw new Error(`找不到 repo「${ref}」：給一個 repo 的路徑，或已經有記憶的 repo 名稱`);
-    repo = { hash: repo.hash, name: repo.name };
+    repo = { hash: repo.hash, name: repo.name, ...(repo.url ? { url: repo.url } : {}) };
   }
 
   return bindSession(cfg, sessionId, cwd, (added, removed) => {

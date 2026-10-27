@@ -25,7 +25,7 @@ import {
 import { UserBadge } from '@/components/asset/UserBadge';
 import { useChatMemory } from '../hooks/useChatMemory';
 import '../styles/chat-memory-panel.css';
-import { repoAgentLabel } from '@/lib/memory-agents';
+import { repoAgentLabel, repoUrl } from '@/lib/memory-agents';
 
 
 export default function ChatMemoryPanel(
@@ -132,6 +132,13 @@ export default function ChatMemoryPanel(
     <div className="_asset-memory-page">
       <AssetPageHeader
         title={t('memory.title')}
+        titleExtra={
+          scopeTab === 'fixed' && repoUrl(currentAgent) ? (
+            <a className="_asset-page-header-link" href={repoUrl(currentAgent)} target="_blank" rel="noreferrer">
+              {repoUrl(currentAgent).replace(/^https?:\/\//, '')}
+            </a>
+          ) : undefined
+        }
         subtitle={
           activeTeam
             ? t('memory.subtitle.team', { name: activeTeam.name, count: blocks.length })
@@ -151,7 +158,6 @@ export default function ChatMemoryPanel(
           scopeTab === 'fixed' ? (
             <Select
               appearance="button"
-              matchButtonWidth
               value={agentFilter}
               onChange={setAgentFilter}
               disabled={ownedTeamAgents.length === 0}

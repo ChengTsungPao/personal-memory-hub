@@ -101,7 +101,6 @@ export default function WikiSourcesPanel() {
           scopeTab === 'fixed' ? (
             <Select
               appearance="button"
-              matchButtonWidth
               value={agentFilter}
               onChange={setAgentFilter}
               disabled={teamAgents.length === 0}

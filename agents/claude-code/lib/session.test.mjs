@@ -5,7 +5,7 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { bindSession, editRepos, findRepos, repoAt } from "./session.mjs";
+import { bindSession, browserUrl, editRepos, findRepos, repoAt } from "./session.mjs";
 
 const git = (cwd, ...args) => execFileSync("git", args, { cwd, stdio: "pipe" }).toString().trim();
 
@@ -278,4 +278,21 @@ test("a session merged into another block writes there and leaves that block's r
   assert.ok(merged.mergedInto);
   assert.deepEqual(boundTo(owner.sessionAgentId), ["a"]);
   await assert.rejects(editRepos(cfg, "sess-merged", tmp(), "add", a), /已合併/);
+});
+
+test("a remote becomes a browser link, without credentials", () => {
+  assert.equal(browserUrl("git@github.com:o/r.git"), "https://github.com/o/r");
+  assert.equal(browserUrl("https://github.com/o/r.git"), "https://github.com/o/r");
+  assert.equal(browserUrl("https://user:token@github.com/o/r.git/"), "https://github.com/o/r");
+  assert.equal(browserUrl("ssh://git@github.com:22/o/r.git"), "https://github.com/o/r");
+  assert.equal(browserUrl("C:/local/repo"), "");
+  assert.equal(browserUrl(""), "");
+});
+
+test("the repo agent keeps the repo's link", async () => {
+  const root = tmp();
+  const a = makeRepo(path.join(root, "a"));
+  git(a, "remote", "add", "origin", "git@github.com:someone/a-repo.git");
+  const { targets } = await bindSession(cfg, "sess-12", a);
+  assert.equal(JSON.parse(agents.get(targets[0].agent_id).metadata_json).url, "https://github.com/someone/a-repo");
 });

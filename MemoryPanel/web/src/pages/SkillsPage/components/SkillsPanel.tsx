@@ -114,7 +114,6 @@ export default function SkillsPanel({
           tab === 'fixed' ? (
             <Select
               appearance="button"
-              matchButtonWidth
               value={selectedAgent}
               onChange={(value) => {
                 setSelectedAgent(value);
