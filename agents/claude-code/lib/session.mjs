@@ -156,8 +156,8 @@ async function activeAgent(cfg, agentId) {
  */
 async function findOrCreate(cfg, { cacheId, match, name, metadata, listAgents }) {
   const cached = await activeAgent(cfg, cacheId);
-  if (cached && match(parseMeta(cached))) return cached;
-  const found = (await listAgents()).find((a) => match(parseMeta(a)));
+  if (cached && match(parseMeta(cached), cached)) return cached;
+  const found = (await listAgents()).find((a) => match(parseMeta(a), a));
   if (found) return found;
   return meta(cfg, "agent/create", {
     team_id: cfg.teamId,
@@ -171,8 +171,10 @@ async function findOrCreate(cfg, { cacheId, match, name, metadata, listAgents })
 // Binding
 // ============================
 
-function sessionName(cwd, sessionId) {
-  return `${path.basename(cwd || "") || "session"} · ${sessionId.slice(0, 8)}`;
+/** A block is named after its repos, e.g. "llm-gateway + personal-memory-hub · d421a1be". */
+function sessionName(repos, sessionId) {
+  const names = repos.map((r) => r.name).join(" + ") || NEW_CHAT_NAME;
+  return `${names} · ${sessionId.slice(0, 8)}`;
 }
 
 /**
@@ -197,7 +199,7 @@ export async function bindSession(cfg, sessionId, cwd, edit) {
   const session = await findOrCreate(cfg, {
     cacheId: state.sessionAgentId,
     match: (m) => m.kind === "session" && m.session_id === sessionId,
-    name: sessionName(cwd, sessionId),
+    name: sessionName([], sessionId),
     metadata: { kind: "session", session_id: sessionId, cwd: cwd ?? "", repos: [], added: [], removed: [] },
     listAgents,
   });
@@ -228,11 +230,18 @@ export async function bindSession(cfg, sessionId, cwd, edit) {
   if (targets.length === 0) {
     const newChat = await findOrCreate(cfg, {
       cacheId: state.newChatId,
-      match: (m) => m.kind === "new-chat",
+      // Also adopts the New-chat agent made before session blocks (no kind, same name).
+      match: (m, a) => m.kind === "new-chat" || (!m.kind && a.name === NEW_CHAT_NAME),
       name: NEW_CHAT_NAME,
       metadata: { kind: "new-chat" },
       listAgents,
     });
+    if (parseMeta(newChat).kind !== "new-chat") {
+      await meta(cfg, "agent/update", {
+        agent_id: newChat.agent_id,
+        metadata_json: JSON.stringify({ ...parseMeta(newChat), kind: "new-chat" }),
+      });
+    }
     state.newChatId = newChat.agent_id;
     targets.push({ agent_id: newChat.agent_id, name: newChat.name });
   }
@@ -260,9 +269,10 @@ export async function bindSession(cfg, sessionId, cwd, edit) {
 
   // Tag the block with its repos (the panel shows them) and keep the manual edits with it.
   const tags = [...repos.values()];
-  const next = { ...sessionMeta, repos: tags, added, removed };
-  if (JSON.stringify(next) !== JSON.stringify(sessionMeta)) {
-    await meta(cfg, "agent/update", { agent_id: session.agent_id, metadata_json: JSON.stringify(next) });
+  const next = { ...sessionMeta, cwd: cwd ?? sessionMeta.cwd ?? "", repos: tags, added, removed };
+  const name = sessionName(tags, sessionId);
+  if (JSON.stringify(next) !== JSON.stringify(sessionMeta) || name !== session.name) {
+    await meta(cfg, "agent/update", { agent_id: session.agent_id, name, metadata_json: JSON.stringify(next) });
   }
 
   writeState(cfg, sessionId, state);

@@ -80,7 +80,10 @@ function fakeMemoryCore() {
       case "agent/get":
         return agents.has(body.agent_id) ? ok(agents.get(body.agent_id)) : { ok: false, json: async () => ({ code: 404 }) };
       case "agent/update":
-        Object.assign(agents.get(body.agent_id), { metadata_json: body.metadata_json });
+        Object.assign(agents.get(body.agent_id), {
+          ...(body.metadata_json !== undefined ? { metadata_json: body.metadata_json } : {}),
+          ...(body.name !== undefined ? { name: body.name } : {}),
+        });
         return ok(agents.get(body.agent_id));
       case "agent/list": {
         const items = [...agents.values()].filter((a) => a.status === "active");
@@ -135,7 +138,7 @@ test("the session finds its block from the server even without the local cache",
   const first = await bindSession(cfg, "sess-2", root);
   const again = await bindSession({ ...cfg, stateDir: tmp() }, "sess-2", root);
   assert.equal(again.sessionAgentId, first.sessionAgentId);
-  assert.equal([...agents.values()].filter((a) => a.name.includes("sess-2".slice(0, 8))).length, 1);
+  assert.equal([...agents.values()].filter((a) => a.name.endsWith("· sess-2")).length, 1);
   rmSync(root, { recursive: true, force: true });
 });
 
@@ -207,4 +210,22 @@ test("manual edits are kept on the server with the block", async () => {
   assert.equal(m.removed.length, 1);
   await bindSession({ ...cfg, stateDir: tmp() }, "sess-8", root); // another machine / lost cache
   assert.deepEqual(boundTo(sessionAgentId), ["a"]);
+});
+
+test("a block is named after its repos and renamed when they change", async () => {
+  const root = tmp();
+  const { sessionAgentId } = await bindSession(cfg, "sess-9abcdef", root);
+  assert.equal(agents.get(sessionAgentId).name, "New-chat · sess-9ab");
+  makeRepo(path.join(root, "a"));
+  makeRepo(path.join(root, "b"));
+  await bindSession(cfg, "sess-9abcdef", root);
+  assert.equal(agents.get(sessionAgentId).name, "a + b · sess-9ab");
+});
+
+test("the New-chat agent made before session blocks is adopted, not duplicated", async () => {
+  const legacy = await (await fetch("http://core/v3/meta/agent/create", { method: "POST", body: JSON.stringify({ name: "New-chat" }) })).json();
+  const { targets } = await bindSession(cfg, "sess-10", tmp());
+  assert.equal(targets[0].agent_id, legacy.data.agent_id);
+  assert.equal(JSON.parse(agents.get(legacy.data.agent_id).metadata_json).kind, "new-chat");
+  assert.equal([...agents.values()].filter((a) => a.name === "New-chat").length, 1);
 });
