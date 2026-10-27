@@ -1091,6 +1091,16 @@
   font-size: 12px;
 }
 
+._memory-agents-card-id a {
+  color: var(--tea-color-text-link-default);
+  overflow-wrap: anywhere;
+  text-decoration: none;
+}
+
+._memory-agents-card-id a:hover {
+  text-decoration: underline;
+}
+
 ._memory-agents-card-desc,
 ._memory-agents-list-description,
 ._memory-agents-list-assets {

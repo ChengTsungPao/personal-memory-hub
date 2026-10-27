@@ -59,3 +59,14 @@ export function repoUrl(agent: WithMeta | undefined): string {
     return '';
   }
 }
+
+/** A repo agent's short root commit hash (its identity), or "". */
+export function repoHash(agent: WithMeta | undefined): string {
+  if (!agent) return '';
+  try {
+    const root = JSON.parse(agent.metadata_json || '{}')?.root_commit;
+    return typeof root === 'string' ? root.slice(0, 7) : '';
+  } catch {
+    return '';
+  }
+}

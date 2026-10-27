@@ -17,6 +17,7 @@ import { canManageAsset, type Team, type Agent as StoreAgent } from '@/services'
 import { useDisplayNameResolver, useUserDisplayName } from '@/services/user-profile-store';
 import { emptyMountedCounts, type AgentMountedCounts } from './types';
 import { Mounted } from './shared';
+import { agentKind, repoHash, repoUrl } from '@/lib/memory-agents';
 
 const { scrollable } = Table.addons;
 
@@ -136,6 +137,30 @@ export default function AgentGrid({
         {editable && <ChevronRightIcon size={compact ? 12 : 14} className="_memory-agents-chevron" />}
       </button>
     );
+  }
+
+  /**
+   * What identifies the agent: a repo agent by its root commit hash and link (its agent id is a
+   * random one), New-chat by nothing; other agents by their id.
+   */
+  function renderIdentity(agent: StoreAgent) {
+    const kind = agentKind(agent);
+    if (kind === 'new-chat') return null;
+    if (kind === 'repo') {
+      const url = repoUrl(agent);
+      return (
+        <div className="_memory-agents-card-id">
+          {repoHash(agent)}
+          {url && (
+            <>
+              {' · '}
+              <a href={url} target="_blank" rel="noreferrer">{url.replace(/^https?:\/\//, '')}</a>
+            </>
+          )}
+        </div>
+      );
+    }
+    return <div className="_memory-agents-card-id">{t('agentGrid.card.id', { id: agent.agent_id })}</div>;
   }
 
   function renderOwner(agent: StoreAgent) {
@@ -283,7 +308,7 @@ export default function AgentGrid({
                 data-guide={editable ? 'agent-card-editable' : undefined}
               >
                 <div className="_memory-agents-card-head">{renderName(agent)}</div>
-                <div className="_memory-agents-card-id">{t('agentGrid.card.id', { id: agent.agent_id })}</div>
+                {renderIdentity(agent)}
                 <div className="_memory-agents-card-desc">{agent.description || t('common.noDescription')}</div>
                 <div className="_memory-agents-owner-row">
                   <span>{t('agentGrid.card.owner')}</span>
