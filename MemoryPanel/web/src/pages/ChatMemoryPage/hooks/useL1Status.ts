@@ -3,7 +3,8 @@
  *
  * Asks /chat-memory/l1-status which slices of the loaded sessions are still extracting (🟡) or failed
  * (🔴), and maps each L0 message onto them by session and recorded time. Polls every 10 s only while
- * something is 🟡; stops once everything is done or failed.
+ * something is 🟡; stops once everything is done or failed. With no L0 loaded yet (the L1 tab), the
+ * sessions come from the first page of L0, so the layer badges show anyway.
  */
 import { useEffect, useMemo, useState } from 'react';
 import { chatMemoryApi, type ChatMemoryLayerItem, type L1StatusSlice } from '@/lib/api/chat-memory';
@@ -45,15 +46,26 @@ export function useL1Status(blockId: string | undefined, items: ChatMemoryLayerI
   const key = `${blockId ?? ''}|${sessionIds.join(',')}`;
 
   useEffect(() => {
-    if (!blockId || !active || sessionIds.length === 0) {
+    if (!blockId || !active) {
       setSlices([]);
       return undefined;
     }
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
+    let ids = sessionIds;
     const load = async () => {
       try {
-        const r = await chatMemoryApi.l1Status(blockId, sessionIds);
+        // L0 is loaded lazily: on the L1 tab it may not be yet, so take the sessions from its first page
+        if (ids.length === 0) {
+          const l0 = await chatMemoryApi.layer(blockId, 'L0', 50);
+          ids = [...new Set(l0.items.map((i) => i.session_id).filter((s): s is string => !!s))].sort();
+          if (cancelled) return;
+          if (ids.length === 0) {
+            setSlices([]);
+            return;
+          }
+        }
+        const r = await chatMemoryApi.l1Status(blockId, ids);
         if (cancelled) return;
         const next = r.enabled ? r.slices : [];
         setSlices(next);
