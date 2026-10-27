@@ -43,3 +43,8 @@ export function repoAgentLabel(agent: WithMeta & { name: string }, all: Array<{ 
     return agent.name;
   }
 }
+
+/** An agent's name, with its id only when another listed agent has the same name. */
+export function nameLabel(agent: { name: string; id: string }, all: Array<{ name: string }>): string {
+  return all.filter((a) => a.name === agent.name).length < 2 ? agent.name : `${agent.name}（${agent.id}）`;
+}

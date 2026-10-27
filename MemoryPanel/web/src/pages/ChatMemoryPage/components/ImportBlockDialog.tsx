@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Alert, Button, Form, Input, Modal, Segment, Select, Text, Upload } from 'tea-component';
 import { FilePasteIcon, UploadIcon } from 'tea-icons-react';
 import { type AgentOption } from '../constants/types';
+import { nameLabel } from '@/lib/memory-agents';
 
 /** 与 docs/api/chat-memory.md §4.10 import 接口对齐 */
 interface ImportMessage {
@@ -92,7 +93,7 @@ export function ImportBlockDialog({
             <Alert type="warning">{t('importBlock.agent.noAgent')}</Alert>
           ) : (
             <Select size="full" value={scopeAgentId} onChange={setScopeAgentId}
-              options={agents.map((a) => ({ value: a.agent_id, text: `${a.name}（${a.agent_id}）` }))} />
+              options={agents.map((a) => ({ value: a.agent_id, text: nameLabel({ name: a.name, id: a.agent_id }, agents) }))} />
           )}
         </Form.Item>
       </Form>

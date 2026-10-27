@@ -36,6 +36,7 @@ import { Alert, Button, Form, Input, Modal, Segment, Select } from 'tea-componen
 import { FolderOpenIcon } from 'tea-icons-react';
 import i18n from '@/i18n';
 import '../styles/import-skill-dialog.css';
+import { nameLabel } from '@/lib/memory-agents';
 
 type Mode = 'directory' | 'session';
 
@@ -328,7 +329,7 @@ export default function ImportSkillDialog(props: {
                 value={selectedAgentId}
                 onChange={setSelectedAgentId}
                 placeholder={t('importSkill.agent.placeholder')}
-                options={props.agents!.map((a) => ({ value: a.id, text: `${a.name}（${a.id}）` }))}
+                options={props.agents!.map((a) => ({ value: a.id, text: nameLabel(a, props.agents!) }))}
               />
             )}
           </Form.Item>

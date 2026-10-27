@@ -16,6 +16,7 @@ import { useCodeSources } from '../hooks/useCodeSources';
 import { CodeDetailView } from './code-detail-view';
 import '@/components/asset/asset-card.css';
 import '../styles/code-sources-panel.css';
+import { nameLabel } from '@/lib/memory-agents';
 
 const { scrollable } = Table.addons;
 
@@ -97,7 +98,7 @@ export default function CodeSourcesPanel() {
               placeholder={t('code.noAgent')}
               options={teamAgents.map((agent) => ({
                 value: agent.id,
-                text: `${agent.name}（${agent.id}）`,
+                text: nameLabel(agent, teamAgents),
               }))}
             />
           ) : undefined

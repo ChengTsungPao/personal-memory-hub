@@ -45,6 +45,7 @@ import ImportSkillDialog from './ImportSkillDialog';
 import ForkSkillDialog from './ForkSkillDialog';
 import { TAB_I18N_KEY, useSkillsPanel, type Tab } from '../hooks/useSkillsPanel';
 import '../styles/skills-list.css';
+import { nameLabel } from '@/lib/memory-agents';
 
 export default function SkillsPanel({
   currentUser: _currentUser,
@@ -123,7 +124,7 @@ export default function SkillsPanel({
               placeholder={t('skills.noAgent')}
               options={teamAgents.map((agent) => ({
                 value: agent.id,
-                text: `${agent.name}（${agent.id}）`,
+                text: nameLabel(agent, teamAgents),
               }))}
             />
           ) : undefined
