@@ -24,6 +24,7 @@
  *   - EditTeamDialog 已迁到 TeamSwitcher 共用（@/layouts/GlobalHeader/TeamSwitcher）
  */
 
+import { isRepoOrNewChatAgent } from '@/lib/memory-agents';
 import { useState, useMemo } from 'react';
 import { Button } from 'tea-component';
 import { useTranslation } from 'react-i18next';
@@ -87,9 +88,11 @@ export default function TeamManagementPanel({
   //   - 全局 admin / 当前 team 的 admin(owner)：可见 team 内全部 agent
   //   - 普通成员：只能看到自己 owner（创建）的 agent
   const canSeeAllAgents = !!activeTeam && (_isAdmin || isTeamAdmin(activeTeam, currentUser));
+  // Same agents as the asset pages: the repo agents and New-chat (lib/memory-agents.ts).
   const agents = useMemo(() => {
-    if (!activeTeam || canSeeAllAgents) return allAgents;
-    return allAgents.filter((a) => a.owner_user_id === currentUser);
+    const memoryAgents = allAgents.filter(isRepoOrNewChatAgent);
+    if (!activeTeam || canSeeAllAgents) return memoryAgents;
+    return memoryAgents.filter((a) => a.owner_user_id === currentUser);
   }, [allAgents, activeTeam, canSeeAllAgents, currentUser]);
   const { counts: mountedCounts, countsLoading } = useAgentMountedCounts(activeTeamId, agents);
   // 通知文案里展示 display_name 而非 user_id（复用全局缓存，幂等无额外请求）

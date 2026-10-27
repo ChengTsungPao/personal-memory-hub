@@ -23,6 +23,7 @@ import {
 import { tea } from '@/lib/tea-bridge';
 import i18n from '@/i18n';
 import { seedDisplayNameCache } from '@/services/user-profile-store';
+import { isSessionAgent } from '@/lib/memory-agents';
 
 // 从 backendStore.ts re-import 纯函数（adapters / types），避免循环依赖
 import {
@@ -37,15 +38,6 @@ import {
   writeActiveTeamId,
   ensureValidActiveTeamId,
 } from '@/services/backendStore';
-
-/** A Claude Code session agent (metadata `{"kind":"session"}`), see agents/claude-code/lib/session.mjs. */
-function isSessionAgent(agent: { metadata_json?: string | null }): boolean {
-  try {
-    return JSON.parse(agent.metadata_json || '{}')?.kind === 'session';
-  } catch {
-    return false;
-  }
-}
 
 // ========================= 事件常量 =========================
 

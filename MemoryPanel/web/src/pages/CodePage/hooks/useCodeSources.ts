@@ -2,6 +2,7 @@
  * useCodeSources —— Code 资产页的全部状态与数据逻辑。
  * 组件层只保留 JSX 渲染，状态 / 数据逻辑集中在此。
  */
+import { isRepoOrNewChatAgent } from '@/lib/memory-agents';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { knowledgeApi, type CodeGraphDetail } from '@/lib/api/knowledge-api';
@@ -51,7 +52,7 @@ export function useCodeSources() {
   const teamAgents = useMemo(
     () =>
       allAgents
-        .filter((a) => a.owner_user_id === currentUser)
+        .filter((a) => a.owner_user_id === currentUser && isRepoOrNewChatAgent(a))
         .map((a) => ({ id: a.agent_id, name: a.name })),
     [allAgents, currentUser],
   );

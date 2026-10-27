@@ -25,23 +25,8 @@ import {
 import { UserBadge } from '@/components/asset/UserBadge';
 import { useChatMemory } from '../hooks/useChatMemory';
 import '../styles/chat-memory-panel.css';
+import { repoAgentLabel } from '@/lib/memory-agents';
 
-/**
- * A repo agent or New-chat by name. Two different repos can share a name (forks, same folder
- * name): only then add the repo's short root commit hash.
- */
-function repoAgentLabel(
-  agent: { name: string; metadata_json?: string },
-  all: Array<{ name: string }>,
-): string {
-  if (all.filter((a) => a.name === agent.name).length < 2) return agent.name;
-  try {
-    const root = JSON.parse(agent.metadata_json || '{}')?.root_commit;
-    return root ? `${agent.name}（${String(root).slice(0, 7)}）` : agent.name;
-  } catch {
-    return agent.name;
-  }
-}
 
 export default function ChatMemoryPanel(
   props: {
