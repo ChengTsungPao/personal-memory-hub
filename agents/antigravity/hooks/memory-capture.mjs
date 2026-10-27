@@ -68,5 +68,5 @@ main()
   })
   .finally(() => {
     process.stdout.write('{"decision":""}');
-    process.exit(0);
+    setTimeout(() => process.exit(0), 20).unref();
   });

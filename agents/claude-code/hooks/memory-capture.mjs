@@ -75,4 +75,7 @@ main()
     // output. Diagnostics go to stderr, and only when debugging is on.
     if (process.env.TDAI_DEBUG === "1") console.error("[tdai-hook] capture failed:", err?.message ?? err);
   })
-  .finally(() => process.exit(0));
+  // Let pending sockets close first: exiting mid-close aborts node on Windows (UV_HANDLE_CLOSING).
+  .finally(() => {
+    setTimeout(() => process.exit(0), 20).unref();
+  });

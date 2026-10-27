@@ -12,8 +12,9 @@
  *   - `mem: repo add|rm` adds or removes a repo by hand; a removed repo is never added back
  *     automatically.
  *
- * The session id → block mapping lives on the server (the session agent's metadata), so a session
- * always finds its block again; the local state file is only a cache plus the manual edits.
+ * The session id → block mapping, the manual edits and the repo tags live on the server (the
+ * session agent's metadata), so a session always finds its block again; the local state file only
+ * caches agent ids.
  */
 
 import { execFileSync } from "node:child_process";
@@ -77,7 +78,7 @@ export function findRepos(cwd) {
 }
 
 // ============================
-// Local state: cache + manual edits
+// Local state: agent id cache
 // ============================
 
 function statePath(cfg, sessionId) {
@@ -176,13 +177,17 @@ function sessionName(cwd, sessionId) {
 
 /**
  * Make sure this session has its block and that the block is bound to the right agents. Returns
- * `{ sessionAgentId, repos, targets }`: the repos the block is tagged with and the agents it is
- * bound to (`[{ agent_id, name }]`). Writes the state cache.
+ * `{ sessionId, sessionAgentId, repos, targets }`: the repos the block is tagged with and the
+ * agents it is bound to (`[{ agent_id, name }]`).
+ *
+ * The server is the source of truth: the block's manual edits (`added`, `removed`) and repo tags
+ * live in the session agent's metadata, and the current bindings are read back from MemoryCore, so
+ * an edit made in the panel or a lost local cache is picked up. Only bindings to repo agents and
+ * New-chat are managed here; a binding to any other agent (made in the panel) is left alone.
+ * `edit(added, removed)` optionally returns new manual edits before the binding is applied.
  */
-export async function bindSession(cfg, sessionId, cwd) {
+export async function bindSession(cfg, sessionId, cwd, edit) {
   const state = readState(cfg, sessionId);
-  state.added ??= [];
-  state.removed ??= [];
   state.repoAgents ??= {};
 
   // Listed at most once per call, and only when a cached id misses.
@@ -193,16 +198,20 @@ export async function bindSession(cfg, sessionId, cwd) {
     cacheId: state.sessionAgentId,
     match: (m) => m.kind === "session" && m.session_id === sessionId,
     name: sessionName(cwd, sessionId),
-    metadata: { kind: "session", session_id: sessionId, cwd: cwd ?? "", repos: [] },
+    metadata: { kind: "session", session_id: sessionId, cwd: cwd ?? "", repos: [], added: [], removed: [] },
     listAgents,
   });
   state.sessionAgentId = session.agent_id;
+  const sessionMeta = parseMeta(session);
+  let added = sessionMeta.added ?? [];
+  let removed = sessionMeta.removed ?? [];
+  if (edit) ({ added, removed } = edit(added, removed));
 
   // Repos: found in the folder, plus manual adds, minus manual removals.
   const repos = new Map();
   for (const r of findRepos(cwd)) repos.set(r.hash, { hash: r.hash, name: r.name });
-  for (const r of state.added) repos.set(r.hash, r);
-  for (const hash of state.removed) repos.delete(hash);
+  for (const r of added) repos.set(r.hash, r);
+  for (const hash of removed) repos.delete(hash);
 
   const targets = [];
   for (const repo of repos.values()) {
@@ -228,30 +237,32 @@ export async function bindSession(cfg, sessionId, cwd) {
     targets.push({ agent_id: newChat.agent_id, name: newChat.name });
   }
 
-  // Apply the difference against what is bound now.
+  // Apply the difference against what MemoryCore has bound now.
   const assetId = blockAssetId(cfg, session.agent_id);
-  const bound = new Set(state.bound ?? []);
+  const current = ((await meta(cfg, "agent-fixed-asset/bindings-of-asset", { asset_id: assetId }))?.items ?? [])
+    .map((b) => b.agent_id)
+    .filter((id) => id !== session.agent_id);
   const wanted = new Set(targets.map((t) => t.agent_id));
   for (const agentId of wanted) {
-    if (bound.has(agentId)) continue;
+    if (current.includes(agentId)) continue;
     await meta(cfg, "agent-fixed-asset/add", {
       agent_id: agentId,
       binding: { asset_id: assetId, asset_type: "chat_memory", created_by: cfg.userId },
     });
   }
-  for (const agentId of bound) {
-    if (!wanted.has(agentId)) await meta(cfg, "agent-fixed-asset/remove", { agent_id: agentId, asset_id: assetId });
+  for (const agentId of current) {
+    if (wanted.has(agentId)) continue;
+    const kind = parseMeta(await activeAgent(cfg, agentId)).kind;
+    if (kind === "repo" || kind === "new-chat") {
+      await meta(cfg, "agent-fixed-asset/remove", { agent_id: agentId, asset_id: assetId });
+    }
   }
-  state.bound = [...wanted];
 
-  // Tag the block with its repos, so the panel can show them.
+  // Tag the block with its repos (the panel shows them) and keep the manual edits with it.
   const tags = [...repos.values()];
-  const sessionMeta = parseMeta(session);
-  if (JSON.stringify(sessionMeta.repos ?? []) !== JSON.stringify(tags)) {
-    await meta(cfg, "agent/update", {
-      agent_id: session.agent_id,
-      metadata_json: JSON.stringify({ ...sessionMeta, repos: tags }),
-    });
+  const next = { ...sessionMeta, repos: tags, added, removed };
+  if (JSON.stringify(next) !== JSON.stringify(sessionMeta)) {
+    await meta(cfg, "agent/update", { agent_id: session.agent_id, metadata_json: JSON.stringify(next) });
   }
 
   writeState(cfg, sessionId, state);
@@ -349,9 +360,6 @@ export async function recallMemory(cfg, binding, { maxBlocks = 10 } = {}) {
  * binding, or throws with a message for the user.
  */
 export async function editRepos(cfg, sessionId, cwd, op, ref) {
-  const state = readState(cfg, sessionId);
-  state.added ??= [];
-  state.removed ??= [];
   ref = (ref ?? "").trim();
   if (!ref) throw new Error(`用法：mem: repo ${op} <${op === "add" ? "路徑或 repo 名稱" : "repo 名稱或 hash"}>`);
 
@@ -363,17 +371,26 @@ export async function editRepos(cfg, sessionId, cwd, op, ref) {
       if (agent) repo = { hash: parseMeta(agent).root_commit, name: agent.name };
     }
     if (!repo) throw new Error(`找不到 repo「${ref}」：給一個 repo 的路徑，或已經有記憶的 repo 名稱`);
-    state.added = [...state.added.filter((r) => r.hash !== repo.hash), { hash: repo.hash, name: repo.name }];
-    state.removed = state.removed.filter((h) => h !== repo.hash);
-  } else {
-    const known = [...findRepos(cwd), ...state.added];
-    repo = known.find((r) => r.name === ref || r.hash.startsWith(ref));
-    if (!repo) throw new Error(`這個 session 沒有綁定 repo「${ref}」`);
-    state.added = state.added.filter((r) => r.hash !== repo.hash);
-    if (!state.removed.includes(repo.hash)) state.removed.push(repo.hash);
+    repo = { hash: repo.hash, name: repo.name };
   }
-  writeState(cfg, sessionId, state);
-  return bindSession(cfg, sessionId, cwd);
+
+  return bindSession(cfg, sessionId, cwd, (added, removed) => {
+    if (op === "add") {
+      return {
+        added: [...added.filter((r) => r.hash !== repo.hash), repo],
+        removed: removed.filter((h) => h !== repo.hash),
+      };
+    }
+    const known = [...findRepos(cwd), ...added];
+    // A name wins over a hash prefix, and a prefix needs 7+ characters: "b" must not match a
+    // repo whose hash happens to start with b.
+    const hit = known.find((r) => r.name === ref) ?? (ref.length >= 7 ? known.find((r) => r.hash.startsWith(ref)) : undefined);
+    if (!hit) throw new Error(`這個 session 沒有綁定 repo「${ref}」`);
+    return {
+      added: added.filter((r) => r.hash !== hit.hash),
+      removed: removed.includes(hit.hash) ? removed : [...removed, hit.hash],
+    };
+  });
 }
 
 /** The line printed after each hook: this session's block and the repos it belongs to. */

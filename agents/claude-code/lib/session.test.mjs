@@ -89,6 +89,10 @@ function fakeMemoryCore() {
       case "agent-fixed-asset/add":
         bindings.add(`${body.agent_id}|${body.binding.asset_id}`);
         return ok({});
+      case "agent-fixed-asset/bindings-of-asset":
+        return ok({
+          items: [...bindings].filter((x) => x.endsWith(`|${body.asset_id}`)).map((x) => ({ agent_id: x.split("|")[0] })),
+        });
       case "agent-fixed-asset/remove":
         bindings.delete(`${body.agent_id}|${body.asset_id}`);
         return ok({});
@@ -163,4 +167,44 @@ test("mem: repo rm keeps a repo out after the next scan, and add brings it back"
   assert.deepEqual(boundTo(sessionAgentId), ["a", "b", "elsewhere"]);
   await assert.rejects(editRepos(cfg, "sess-5", root, "rm", "nope"), /沒有綁定/);
   rmSync(root, { recursive: true, force: true });
+});
+
+test("mem: repo rm by hash needs 7+ characters, so a short name never matches a hash", async () => {
+  const root = tmp();
+  const a = repoAt(makeRepo(path.join(root, "a")));
+  const { sessionAgentId } = await bindSession(cfg, "sess-6", root);
+
+  await assert.rejects(editRepos(cfg, "sess-6", root, "rm", a.hash.slice(0, 1)), /沒有綁定/);
+  assert.deepEqual(boundTo(sessionAgentId), ["a"]);
+  await editRepos(cfg, "sess-6", root, "rm", a.hash.slice(0, 7));
+  assert.deepEqual(boundTo(sessionAgentId), ["New-chat"]);
+});
+
+test("bindings come from the server: a lost cache still drops a stale repo, and other agents stay", async () => {
+  const root = tmp();
+  const a = makeRepo(path.join(root, "a"));
+  const b = makeRepo(path.join(root, "b"));
+  const s = await bindSession(cfg, "sess-7", a);
+  assert.deepEqual(boundTo(s.sessionAgentId), ["a"]);
+
+  // Bound by hand to some other agent in the panel: not ours to remove.
+  const other = await (await fetch("http://core/v3/meta/agent/create", { method: "POST", body: JSON.stringify({ name: "hand-picked" }) })).json();
+  bindings.add(`${other.data.agent_id}|chat_memory-T-${s.sessionAgentId}`);
+
+  // Same session id seen from repo b, with the local cache gone.
+  await bindSession({ ...cfg, stateDir: tmp() }, "sess-7", b);
+  assert.deepEqual(boundTo(s.sessionAgentId), ["b", "hand-picked"]);
+});
+
+test("manual edits are kept on the server with the block", async () => {
+  const root = tmp();
+  makeRepo(path.join(root, "a"));
+  makeRepo(path.join(root, "b"));
+  const { sessionAgentId } = await bindSession(cfg, "sess-8", root);
+  await editRepos(cfg, "sess-8", root, "rm", "b");
+
+  const m = JSON.parse(agents.get(sessionAgentId).metadata_json);
+  assert.equal(m.removed.length, 1);
+  await bindSession({ ...cfg, stateDir: tmp() }, "sess-8", root); // another machine / lost cache
+  assert.deepEqual(boundTo(sessionAgentId), ["a"]);
 });

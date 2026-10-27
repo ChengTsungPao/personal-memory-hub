@@ -47,4 +47,6 @@ main()
   .catch((err) => {
     if (process.env.TDAI_DEBUG === "1") console.error("[tdai-hook] command failed:", err?.message ?? err);
   })
-  .finally(() => process.exit(0));
+  .finally(() => {
+    setTimeout(() => process.exit(0), 20).unref();
+  });

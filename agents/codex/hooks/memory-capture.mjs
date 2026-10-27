@@ -77,4 +77,6 @@ async function main() {
 
 main().catch((err) => {
   if (process.env.TDAI_DEBUG === "1") console.error("[tdai-hook] Codex capture failed:", err?.message ?? err);
-}).finally(() => process.exit(0));
+}).finally(() => {
+  setTimeout(() => process.exit(0), 20).unref();
+});
