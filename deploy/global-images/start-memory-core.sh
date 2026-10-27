@@ -304,16 +304,12 @@ fi
 
 init_body=$(printf '{"username":"%s","user_key":"%s"}' \
   "$MEMORY_CORE_ADMIN_USERNAME" "$ADMIN_KEY")
-# 响应体与状态码一起走 stdout（最后一行是状态码），不落 /tmp 文件：
-# Windows 上原生 curl.exe 不认识 Git Bash 的 /tmp。
-init_out=$("$CURL" -sS -w $'\n%{http_code}' \
+init_resp=$("$CURL" -sS -o /tmp/init-admin.$$ -w "%{http_code}" \
   -X POST -H "Content-Type: application/json" \
   ${MEMORY_CORE_GATEWAY_API_KEY:+-H "Authorization: Bearer ${MEMORY_CORE_GATEWAY_API_KEY}"} \
   -H "x-tdai-service-id: default" \
   "${CORE_ENDPOINT}/v3/internal/meta/user/init-admin" \
   -d "$init_body" 2>/dev/null || echo "000")
-init_resp="${init_out##*$'\n'}"
-init_resp_body="${init_out%$'\n'*}"
 
 case "$init_resp" in
   200)
@@ -335,9 +331,10 @@ case "$init_resp" in
     ;;
   *)
     warn "init-admin 返回 HTTP=${init_resp}，可能需要手动排查："
-    printf '%s\n' "$init_resp_body"
+    cat /tmp/init-admin.$$ 2>/dev/null; echo
     ;;
 esac
+rm -f /tmp/init-admin.$$
 
 # ── 校验 admin key 可用 ─────────────────────────────────────────
 if [[ -s "$ADMIN_KEY_FILE" ]]; then

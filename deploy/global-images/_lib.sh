@@ -4,10 +4,6 @@
 
 set -euo pipefail
 
-# Windows Git Bash：关闭 MSYS 路径转换，否则 docker 的 -e / -v 参数里的
-# /data/... 会被改写成 C:/Program Files/Git/data/...（数据目录与配置挂载全错）。
-export MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*'
-
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ENV_FILE="${ENV_FILE:-$SCRIPT_DIR/.env}"
 
@@ -80,6 +76,17 @@ find_docker() {
 }
 
 DOCKER="$(find_docker)"
+
+# Windows Git Bash：只对 docker 关闭 MSYS 路径转换，否则 -e / -v 参数里的容器路径
+# /data/... 会被改写成 C:/Program Files/Git/data/...（数据目录与配置挂载全错）。
+# 不全局关闭：curl 等原生程序仍需要 /dev/null 这类路径被转换。
+case "$(uname -s)" in
+  MINGW*|MSYS*|CYGWIN*)
+    _DOCKER_BIN="$DOCKER"
+    _docker_no_pathconv() { MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*' "$_DOCKER_BIN" "$@"; }
+    DOCKER=_docker_no_pathconv
+    ;;
+esac
 
 # PULL=1 时拉取镜像最新版本。
 # 默认关闭：docker run 在本地没有镜像时会自动拉，但本地已有同名 :latest 时会直接复用，
