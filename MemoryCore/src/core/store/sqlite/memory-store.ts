@@ -2669,11 +2669,11 @@ export class VectorStore implements IMemoryStore {
     }
     if (this.degraded) return { l0Moved: 0, l1Moved: 0 };
 
+    const sessionId = args.sessionId;
+    const where = `team_id = ? AND agent_id = ?${sessionId !== undefined ? " AND session_id = ?" : ""}`;
+    const params = sessionId !== undefined ? [teamId, from, sessionId] : [teamId, from];
     const move = (table: string): number =>
-      Number(
-        (this.db.prepare(`UPDATE ${table} SET agent_id = ? WHERE team_id = ? AND agent_id = ?`).run(to, teamId, from) as any)
-          ?.changes ?? 0,
-      );
+      Number((this.db.prepare(`UPDATE ${table} SET agent_id = ? WHERE ${where}`).run(to, ...params) as any)?.changes ?? 0);
     this.db.exec("BEGIN");
     try {
       const l0Moved = move("l0_conversations");
@@ -2689,6 +2689,15 @@ export class VectorStore implements IMemoryStore {
       this.db.exec("ROLLBACK");
       throw err;
     }
+  }
+
+  listContentSessionIds(teamId: string, agentId: string): string[] {
+    if (this.degraded) return [];
+    const rows = this.db.prepare(
+      `SELECT session_id FROM l0_conversations WHERE team_id = ? AND agent_id = ?
+       UNION SELECT session_id FROM l1_records WHERE team_id = ? AND agent_id = ?`,
+    ).all(teamId, agentId, teamId, agentId) as Array<{ session_id: string }>;
+    return rows.map((r) => r.session_id).filter((id) => typeof id === "string" && id.length > 0);
   }
 
   private entityId(prefix: string): string {

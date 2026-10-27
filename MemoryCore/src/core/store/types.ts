@@ -494,6 +494,8 @@ export interface MemoryContentMoveArgs {
   teamId: string;
   fromAgentId: string;
   toAgentId: string;
+  /** Only the rows of this session (splitting a block per session); all rows when unset. */
+  sessionId?: string;
 }
 
 export interface MemoryContentMoveResult {
@@ -746,6 +748,9 @@ export interface IMemoryStore extends MemoryPromptStore, MemoryGenerationRefStor
    * profiles are not moved: they are rebuilt from L1. Must reject empty ids and from === to.
    */
   moveMemoryContent?(args: MemoryContentMoveArgs): MaybePromise<MemoryContentMoveResult>;
+
+  /** The distinct session ids of an agent's L0 and L1 rows (splitting a block per session). */
+  listContentSessionIds?(teamId: string, agentId: string): MaybePromise<string[]>;
 
   // ── Entity metadata (Team / User / Agent / Task) ───────────
   createTeam?(input: Omit<TeamEntity, "created_at" | "updated_at" | "status" | "user_ids" | "agent_ids" | "task_ids"> & { team_id?: string; status?: TeamStatus }): MaybePromise<TeamEntity>;

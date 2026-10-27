@@ -53,4 +53,20 @@ describe("sqlite moveMemoryContent", () => {
     expect(() => store.moveMemoryContent!({ teamId: "t", fromAgentId: "", toAgentId: "agt-b" })).toThrow();
     expect(() => store.moveMemoryContent!({ teamId: "t", fromAgentId: "agt-a", toAgentId: "agt-a" })).toThrow();
   });
+
+  it("moves only one session when asked, and lists an agent's sessions", async () => {
+    const store = open();
+    const row = (id: string, sid: string) =>
+      ({ ...l0(id, "old", "text " + id), sessionId: sid }) as Parameters<IMemoryStore["upsertL0"]>[0];
+    await store.upsertL0(row("x1", "s1"), undefined);
+    await store.upsertL0(row("x2", "s1"), undefined);
+    await store.upsertL0(row("x3", "s2"), undefined);
+    await store.upsertL1({ ...l1("x4", "old", "atom"), sessionId: "s3" } as MemoryRecord, undefined);
+
+    expect(store.listContentSessionIds!("t", "old").sort()).toEqual(["s1", "s2", "s3"]);
+    expect(await store.moveMemoryContent!({ teamId: "t", fromAgentId: "old", toAgentId: "blk-s1", sessionId: "s1" }))
+      .toEqual({ l0Moved: 2, l1Moved: 0 });
+    expect(store.countL0({ teamId: "t", agentId: "old" })).toBe(1);
+    expect(store.listContentSessionIds!("t", "old").sort()).toEqual(["s2", "s3"]);
+  });
 });

@@ -667,6 +667,18 @@ upsert 知识明细（幂等）。
 { "memory_id": "chat_memory-team-x-agt-b", "merged_memory_id": "chat_memory-team-x-agt-a", "l0_moved": 12, "l1_moved": 3 }
 ```
 
+### POST /v3/chat-memory/split-sessions
+
+把旧的按项目记忆块（非 session 记忆块）按 session 拆开：每个 session 的 L0/L1 移到该 session 自己的记忆块。已有记忆块（hook 建的，或被合并进去的）的 session 移到那里；没有的新建一个 session 记忆块并绑定到 New-chat。L2/L3 无法按 session 拆，留在原处。幂等；`dry_run: true` 只列出 session，不移动。
+
+```json
+{ "memory_id": "chat_memory-team-x-agt-old", "dry_run": false }
+```
+
+```json
+{ "items": [{ "session_id": "d421a1be-…", "memory_id": "chat_memory-team-x-agt-s1", "created": false, "l0_moved": 1219, "l1_moved": 329 }] }
+```
+
 ---
 
 ## 3.5 Memory-Prompt（7）

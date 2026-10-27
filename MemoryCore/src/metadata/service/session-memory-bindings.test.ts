@@ -139,4 +139,27 @@ describe("session memory block bindings", () => {
     await expect(svc.planSessionBlockMerge(block(s), block(s))).rejects.toThrow(/itself/);
     await expect(svc.planSessionBlockMerge(block(s), block(plain))).rejects.toThrow(/only session/);
   });
+
+  // ── splitting an old block per session (/v3/chat-memory/split-sessions) ──
+  it("finds a session's block by its own or a merged session id, else makes one under New-chat", async () => {
+    const own = await session("s-own");
+    await svc.updateAgent(own.agent_id, {
+      metadata_json: JSON.stringify({ kind: "session", session_id: "s-own", merged_sessions: ["s-merged"] }),
+    });
+
+    expect((await svc.ensureSessionAgent(teamId, "s-own", userId)).agent.agent_id).toBe(own.agent_id);
+    expect((await svc.ensureSessionAgent(teamId, "s-merged", userId)).agent.agent_id).toBe(own.agent_id);
+
+    const made = await svc.ensureSessionAgent(teamId, "s-orphan-1234", userId);
+    expect(made.created).toBe(true);
+    expect(made.agent.name).toBe("New-chat · s-orphan");
+    const newChat = (await store.listAgentsByTeam(teamId, { limit: 100, offset: 0 })).items
+      .find((a) => JSON.parse(a.metadata_json || "{}").kind === "new-chat")!;
+    expect(await boundTo(made.agent)).toEqual([made.agent.agent_id, newChat.agent_id].sort());
+
+    // A second orphan reuses that New-chat.
+    await svc.ensureSessionAgent(teamId, "s-orphan-5678", userId);
+    expect((await store.listAgentsByTeam(teamId, { limit: 100, offset: 0 })).items
+      .filter((a) => JSON.parse(a.metadata_json || "{}").kind === "new-chat")).toHaveLength(1);
+  });
 });
