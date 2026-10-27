@@ -64,6 +64,9 @@
     "vitest": "^4.1.2"
   },
   "license": "MIT",
+  "overrides": {
+    "@opentelemetry/exporter-trace-otlp-http": "$@opentelemetry/sdk-node"
+  },
   "pnpm": {
     "onlyBuiltDependencies": [
       "better-sqlite3",
