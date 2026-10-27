@@ -77,6 +77,17 @@ find_docker() {
 
 DOCKER="$(find_docker)"
 
+# Windows Git Bash：只对 docker 关闭 MSYS 路径转换，否则 -e / -v 参数里的容器路径
+# /data/... 会被改写成 C:/Program Files/Git/data/...（数据目录与配置挂载全错）。
+# 不全局关闭：curl 等原生程序仍需要 /dev/null 这类路径被转换。
+case "$(uname -s)" in
+  MINGW*|MSYS*|CYGWIN*)
+    _DOCKER_BIN="$DOCKER"
+    _docker_no_pathconv() { MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*' "$_DOCKER_BIN" "$@"; }
+    DOCKER=_docker_no_pathconv
+    ;;
+esac
+
 # PULL=1 时拉取镜像最新版本。
 # 默认关闭：docker run 在本地没有镜像时会自动拉，但本地已有同名 :latest 时会直接复用，
 # 不会感知远端更新——想升级到最新 latest 就带 PULL=1。
@@ -504,6 +515,11 @@ to_docker_host_path() {
   fi
   if [[ -n "${HOST_DEPLOY_DIR:-}" && "$p" == /deploy* ]]; then
     echo "${HOST_DEPLOY_DIR}${p#/deploy}"
+    return
+  fi
+  # Git Bash：/c/Users/... → C:/Users/...（已关闭 MSYS 路径转换，docker 不会自动改写）
+  if command -v cygpath >/dev/null 2>&1; then
+    cygpath -m "$p"
     return
   fi
   echo "$p"
