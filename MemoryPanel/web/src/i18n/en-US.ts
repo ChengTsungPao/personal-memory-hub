@@ -715,7 +715,7 @@ export const enUS = {
   'memory.confirm.deleteBlock.ok': 'Delete',
   'memory.notify.blockDeleted': 'Memory block deleted',
   'memory.notify.blockDeleteFailed': 'Delete failed',
-  'memory.editRepos': 'Edit repos',
+  'memory.editRepos': 'Edit',
   'memory.editRepos.tooltip': 'Set which repos this memory block belongs to',
   'memory.editRepos.title': 'Edit the memory block repos',
   'memory.editRepos.noRepos': 'No repos yet. They appear here once a session has been opened in a repo folder.',
