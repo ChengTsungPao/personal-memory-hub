@@ -690,6 +690,8 @@ export const zhCN = {
   'memory.confirm.unbind.desc': '將從當前 agent 移除該記憶塊繫結。',
   'memory.confirm.unbind.ok': '解綁',
   'memory.delete': 'Delete',
+  'memory.moveUp': '上移',
+  'memory.moveDown': '下移',
   'memory.delete.tooltip': '刪除這個記憶塊',
   'memory.confirm.deleteBlock': '確認刪除這個記憶塊？',
   'memory.confirm.deleteBlock.desc': '記憶塊裡的所有對話和記憶都會被刪除，無法復原。如果這個 session 還在使用，它下一輪會建立一個新的空記憶塊。',

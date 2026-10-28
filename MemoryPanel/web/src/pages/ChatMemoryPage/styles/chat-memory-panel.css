@@ -1399,3 +1399,34 @@ a._memory-repo-tag:hover {
   color: var(--tea-color-text-tertiary);
   font-size: 12px;
 }
+
+
+/* ===== 记忆块排序：卡片标题列上的 ↑ ↓ ===== */
+._memory-card-move {
+  flex-shrink: 0;
+  display: inline-flex;
+  gap: 2px;
+}
+
+._memory-card-move button {
+  width: 24px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--tea-color-border-primary-default);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--tea-color-text-secondary);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+._memory-card-move button:hover:not(:disabled) {
+  border-color: var(--tea-color-border-brand-default);
+  color: var(--tea-color-text-brand-default);
+}
+
+._memory-card-move button:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}

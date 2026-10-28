@@ -709,6 +709,8 @@ export const enUS = {
   'memory.confirm.unbind.desc': 'This will remove the memory block binding from the current agent.',
   'memory.confirm.unbind.ok': 'Unbind',
   'memory.delete': 'Delete',
+  'memory.moveUp': 'Move up',
+  'memory.moveDown': 'Move down',
   'memory.delete.tooltip': 'Delete this memory block',
   'memory.confirm.deleteBlock': 'Delete this memory block?',
   'memory.confirm.deleteBlock.desc': 'All conversations and memories in it are deleted and cannot be restored. If the session is still in use, it creates a new empty block on its next turn.',

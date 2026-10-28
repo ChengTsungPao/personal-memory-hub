@@ -74,6 +74,7 @@ export default function ChatMemoryPanel(
     pageSize,
     windowTotal,
     filtered,
+    moveBlock,
     // handlers
     fetchBlocks,
     handleLayerPageChange,
@@ -234,6 +235,28 @@ export default function ChatMemoryPanel(
                           </span>
                         )}
                       </span>
+                      {scopeTab === 'fixed' && filtered.length > 1 && (
+                        <span className="_memory-card-move" onClick={(e) => e.stopPropagation()}>
+                          <button
+                            type="button"
+                            title={t('memory.moveUp')}
+                            aria-label={t('memory.moveUp')}
+                            disabled={filtered[0]?.id === b.id}
+                            onClick={() => moveBlock(b.id, -1)}
+                          >
+                            ↑
+                          </button>
+                          <button
+                            type="button"
+                            title={t('memory.moveDown')}
+                            aria-label={t('memory.moveDown')}
+                            disabled={filtered[filtered.length - 1]?.id === b.id}
+                            onClick={() => moveBlock(b.id, 1)}
+                          >
+                            ↓
+                          </button>
+                        </span>
+                      )}
                       {l0Count > 0 && <span className="_memory-card-count">{l0Count}</span>}
                     </div>
 
