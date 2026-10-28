@@ -19,6 +19,16 @@ export interface ChatMemoryBlock {
   agent_id?: string;
   /** 资产可见范围：agent-fixed / my-agents 由 visibility 映射返回；team-assets 不返回（恒为 team） */
   scope?: 'team' | 'private';
+  /** session 记忆块：自己的名称（session agent 的名称，可改名）与所属 repo。仅 agent-fixed */
+  name?: string;
+  repos?: ChatMemoryRepo[];
+}
+
+export interface ChatMemoryRepo {
+  name: string;
+  /** 第一个 commit 的 hash，repo 的身分 */
+  hash: string;
+  url?: string;
 }
 
 /** 分层懒加载条目 */
@@ -145,6 +155,10 @@ export const chatMemoryApi = {
       block_id: blockId,
       agent_id: agentId,
     }),
+
+  /** 给 session 记忆块命名（Owner-only）；命名后不再随 repo 自动改名 */
+  renameBlock: (blockId: string, name: string) =>
+    chatMemoryCall<unknown>('rename-block', { block_id: blockId, name }),
 
   /** 手工建独立 UserAsset */
   create: (teamId: string, title: string, scope: 'team' | 'private', description?: string) =>

@@ -15,6 +15,8 @@ import { BlockDetail } from './BlockDetail';
 import { ImportBlockDialog } from './ImportBlockDialog';
 import { AllocateMemoryDialog } from './AllocateMemoryDialog';
 import { RenameAgentDialog } from './RenameAgentDialog';
+import { RenameBlockDialog } from './RenameBlockDialog';
+import { RepoTags } from './RepoTags';
 import { AssetPageHeader } from '@/components/asset/AssetPageHeader';
 import { AssetSplitLayout } from '@/components/asset/AssetSplitLayout';
 import {
@@ -38,6 +40,7 @@ export default function ChatMemoryPanel(
   const store = useChatMemory(props);
 
   const [showRename, setShowRename] = useState(false);
+  const [renamingBlock, setRenamingBlock] = useState<{ id: string; name: string } | null>(null);
 
   const {
     // context
@@ -254,6 +257,9 @@ export default function ChatMemoryPanel(
                       {l0Count > 0 && <span className="_memory-card-count">{l0Count}</span>}
                     </div>
 
+                    {/* session 记忆块：所属 repo 标签 */}
+                    <RepoTags repos={b.repos} />
+
                     {/* 第 2 行：资产真实 id，等宽灰色 */}
                     <div className="_memory-card-id" title={b.id}>{b.id}</div>
 
@@ -266,6 +272,19 @@ export default function ChatMemoryPanel(
                           isCurrentUser={isOwner}
                           youText={t('common.you')}
                         />
+                      )}
+                      {isOwner && b.name && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setRenamingBlock({ id: b.id, name: b.name! });
+                          }}
+                          title={t('memory.renameBlock.tooltip')}
+                          className="_memory-card-unbind _memory-card-rename"
+                        >
+                          {t('memory.renameBlock')}
+                        </button>
                       )}
                       {canUnbind ? (
                         <button
@@ -342,6 +361,23 @@ export default function ChatMemoryPanel(
           agent={currentAgent}
           onClose={() => setShowRename(false)}
           onRenamed={handleRenameAgent}
+        />
+      )}
+
+      {renamingBlock && (
+        <RenameBlockDialog
+          block={renamingBlock}
+          onClose={() => setRenamingBlock(null)}
+          onRenamed={async (newName) => {
+            try {
+              await chatMemoryApi.renameBlock(renamingBlock.id, newName);
+              tea.notify.success(t('memory.notify.renameBlockSuccess'));
+              setRenamingBlock(null);
+              fetchBlocks();
+            } catch (e: unknown) {
+              tea.notify.error(e instanceof Error ? e.message : t('memory.notify.renameBlockFailed'));
+            }
+          }}
         />
       )}
 

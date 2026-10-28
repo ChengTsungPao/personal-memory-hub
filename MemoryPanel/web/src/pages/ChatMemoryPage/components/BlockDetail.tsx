@@ -11,6 +11,7 @@ import { tea } from '@/lib/tea-bridge';
 import { MarkdownView } from '@/components/MarkdownView';
 import type { ChatMemorySearchHit } from '@/lib/teamApi';
 import { statusOfMessage, useL1Status } from '../hooks/useL1Status';
+import { RepoTags } from './RepoTags';
 import {
   AppIcon,
   UsergroupIcon,
@@ -616,6 +617,7 @@ export function BlockDetail({
               {block.id}
             </span>
           </div>
+          <RepoTags repos={block.repos} />
           <div className="_memory-detail-meta">
             {block.agent_id ? (
               <span

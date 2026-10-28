@@ -34,6 +34,9 @@ export interface MemoryBlock {
   scope?: 'team' | 'private';
   layer_counts: { L0_messages: number; L1: number; L2: number; L3: number };
   bound_agent_count?: number;
+  /** session 记忆块：自己的名称与所属 repo（其他记忆塊沒有） */
+  name?: string;
+  repos?: Array<{ name: string; hash: string; url?: string }>;
   layers: {
     L0: ChatMemoryLayerItem[];
     L1: AtomicItem[];

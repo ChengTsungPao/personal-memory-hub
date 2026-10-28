@@ -26,6 +26,7 @@
  *   POST /chat-memory/patch-scope     改 scope（team ↔ private）
  *   POST /chat-memory/allocate        分配（借入），含 ≤ 2 校验
  *   POST /chat-memory/unbind          从 agent 解绑
+ *   POST /chat-memory/rename-block    给 session 记忆块命名（Owner-only）
  *   POST /chat-memory/layer           L0/L1/L2/L3 分层懒加载
  *   POST /chat-memory/layer-delete    L0/L1 列表批量删除（Owner-only）
  *   POST /chat-memory/clear           一键清空内容、保留资产（Owner-only）
@@ -91,6 +92,7 @@ interface AgentRaw {
   team_id: string;
   owner_user_id: string;
   name: string;
+  metadata_json?: string | null;
 }
 interface FixedAssetRaw {
   asset_id: string;
@@ -117,6 +119,18 @@ interface MemoryBlockOut {
   scope?: "team" | "private";
   bound_agent_count?: number;
   agent_id?: string;
+  /** A session block's own name (its session agent's) and the repos it belongs to. */
+  name?: string;
+  repos?: Array<{ name: string; hash: string; url?: string }>;
+}
+
+/** An agent's metadata_json as an object ({} when unset or not JSON). */
+function agentMeta(agent: { metadata_json?: string | null }): Record<string, any> {
+  try {
+    return JSON.parse(agent.metadata_json || "{}") ?? {};
+  } catch {
+    return {};
+  }
 }
 
 export function registerChatMemoryRoutes(api: Hono, deps: PanelDeps): void {
@@ -272,6 +286,31 @@ export function registerChatMemoryRoutes(api: Hono, deps: PanelDeps): void {
           } catch {
             /* fallback 空 */
           }
+          // A session block (Claude Code / Codex / Antigravity session) belongs to a hidden
+          // session agent whose metadata holds its repos; others carry neither.
+          let sessionExtra: Pick<MemoryBlockOut, "name" | "repos"> = {};
+          const owning = parseChatMemoryAssetId(it.asset_id);
+          if (owning && owning.agentId !== agentId) {
+            try {
+              const sEnv = await deps.metaKernel.invoke(
+                "agent/get",
+                { agent_id: owning.agentId },
+                ctx,
+              );
+              if (sEnv.code === 0 && sEnv.data) {
+                const sAgent = sEnv.data as AgentRaw;
+                const m = agentMeta(sAgent);
+                if (m.kind === "session") {
+                  sessionExtra = {
+                    name: sAgent.name,
+                    repos: Array.isArray(m.repos) ? m.repos : [],
+                  };
+                }
+              }
+            } catch {
+              /* a block without its agent still lists */
+            }
+          }
           return {
             id: it.asset_id,
             title: it.name,
@@ -283,6 +322,7 @@ export function registerChatMemoryRoutes(api: Hono, deps: PanelDeps): void {
             // TEMP：本地测试展示用；生产应改为懒加载
             layer_counts: emptyLayers(),
             agent_id: agentId,
+            ...sessionExtra,
           };
         }),
       );
@@ -1382,6 +1422,63 @@ export function registerChatMemoryRoutes(api: Hono, deps: PanelDeps): void {
       );
     }
   });
+
+  // ==========================================================================
+  // POST /chat-memory/rename-block   body: { block_id, name }
+  //
+  // Names a session memory block. The name is the session agent's name (the block's title
+  // follows it); `custom_name` in its metadata stops the hooks from renaming it after the
+  // session's repos again. Owner only; session blocks only (a repo agent is renamed with
+  // /meta/agent/update).
+  // ==========================================================================
+  api.post(
+    "/chat-memory/rename-block",
+    validatePanelMetaHeaders(deps),
+    async (c) => {
+      const ctx = buildCtx(c);
+      const body = await readJson(c);
+      const blockId = requiredBlockId(body);
+      const name = typeof body?.name === "string" ? body.name.trim() : "";
+      if (!blockId) return respondControlError(c, 400, "MISSING_BLOCK_ID");
+      if (!name) return respondControlError(c, 400, "MISSING_NAME");
+      if (name.length > 80) return respondControlError(c, 400, "NAME_TOO_LONG");
+
+      const parsed = parseChatMemoryAssetId(blockId);
+      if (!parsed) return respondControlError(c, 400, "NOT_AGENT_MEMORY");
+
+      const meUserId = await resolveCallerUserId(deps, ctx);
+      if (!meUserId) return respondControlError(c, 401, "INVALID_USER_KEY");
+
+      const agentEnv = await deps.metaKernel.invoke(
+        "agent/get",
+        { agent_id: parsed.agentId },
+        ctx,
+      );
+      if (agentEnv.code === 404 || (agentEnv.code === 0 && !agentEnv.data)) {
+        return respondControlError(c, 404, "BLOCK_NOT_FOUND");
+      }
+      if (agentEnv.code !== 0) return respondEnvelope(c, agentEnv);
+      const agent = agentEnv.data as AgentRaw;
+      if (agent.owner_user_id !== meUserId) {
+        return respondControlError(c, 403, "NOT_ASSET_OWNER");
+      }
+      const meta = agentMeta(agent);
+      if (meta.kind !== "session") {
+        return respondControlError(c, 400, "NOT_SESSION_BLOCK");
+      }
+
+      const env = await deps.metaKernel.invoke(
+        "agent/update",
+        {
+          agent_id: agent.agent_id,
+          name,
+          metadata_json: JSON.stringify({ ...meta, custom_name: true }),
+        },
+        ctx,
+      );
+      return respondEnvelope(c, env);
+    },
+  );
 
   // ==========================================================================
   // POST /chat-memory/clear  body: { memory_ids: string[] }

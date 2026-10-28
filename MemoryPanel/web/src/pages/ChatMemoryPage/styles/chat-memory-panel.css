@@ -1332,3 +1332,50 @@
   font-variant-numeric: tabular-nums;
   background: var(--tea-color-bg-secondary-default, rgba(0, 0, 0, 0.05));
 }
+
+
+/* ===== session 记忆块的 repo 标签 ===== */
+._memory-repo-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+  margin-top: 6px;
+}
+
+._memory-repo-tag {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  max-width: 100%;
+  padding: 0 8px;
+  border: 1px solid var(--tea-color-border-primary-default);
+  border-radius: 10px;
+  background: var(--tea-color-bg-secondary-default);
+  color: var(--tea-color-text-secondary);
+  font-size: 12px;
+  line-height: 20px;
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+
+a._memory-repo-tag {
+  color: var(--tea-color-text-link-default);
+}
+
+a._memory-repo-tag:hover {
+  border-color: var(--tea-color-border-brand-default);
+}
+
+._memory-repo-tag--none {
+  color: var(--tea-color-text-tertiary);
+}
+
+._memory-repo-tag-hash {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--tea-color-text-tertiary);
+}
+
+._memory-card-rename {
+  margin-right: 8px;
+}
