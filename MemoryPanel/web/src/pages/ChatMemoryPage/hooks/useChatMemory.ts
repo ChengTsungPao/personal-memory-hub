@@ -57,7 +57,6 @@ export function useChatMemory(props: { activeTeamId?: string | null } = {}) {
   // 后端探测到筛选范围过大时为 true，BlockDetail 显示提示而非空态
   const [rangeTooLarge, setRangeTooLarge] = useState(false);
   const [showImport, setShowImport] = useState(false);
-  const [showAllocate, setShowAllocate] = useState(false);
   // 默认展示 Agent 资产（fixed），避免用户误以为自己的资产在「团队资产」里
   const [scopeTab, setScopeTab] = useState<ScopeTab>('fixed');
   const [agentFilter, setAgentFilter] = useState<string>('');
@@ -512,17 +511,6 @@ export function useChatMemory(props: { activeTeamId?: string | null } = {}) {
     return !!ownerAgentId && b.id === `chat_memory-${activeTeamId}-${ownerAgentId}`;
   }
 
-  function allocatableAgents(b: MemoryBlock) {
-    // 文档 §4.5 allocate 权限规则：
-    //   1. agent.owner = me（只能分配到自己 owner 的 agent，否则 403 NOT_YOUR_AGENT）
-    //   3. 不能把 agent 自己的 chat_memory 分配给自己
-    // 所以数据源用 ownedTeamAgents，排除该记忆块自身的 agent。
-    const ownerAgentId = selfChatMemoryAgentId(b);
-    return ownedTeamAgents
-      .filter((a) => a.agent_id !== ownerAgentId)
-      .map((a) => ({ agent_id: a.agent_id, name: a.name }));
-  }
-
   // ── 操作 ──
   async function handleDeleteBlock(id: string) {
     const block = blocks.find((b) => b.id === id);
@@ -647,8 +635,6 @@ export function useChatMemory(props: { activeTeamId?: string | null } = {}) {
     rangeTooLarge,
     showImport,
     setShowImport,
-    showAllocate,
-    setShowAllocate,
     scopeTab,
     setScopeTab,
     agentFilter,
@@ -672,7 +658,6 @@ export function useChatMemory(props: { activeTeamId?: string | null } = {}) {
     handleToggleScope,
     // helpers
     agentLabel,
-    allocatableAgents,
     isSelfChatMemory,
   };
 }
