@@ -21,6 +21,24 @@ import {
 } from '../utils/memory-utils';
 import { getLayerCount } from '../utils/utils';
 
+function readBlockOrder(key: string): string[] {
+  if (!key) return [];
+  try {
+    const v = JSON.parse(localStorage.getItem(key) || '[]');
+    return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeBlockOrder(key: string, ids: string[]) {
+  try {
+    localStorage.setItem(key, JSON.stringify(ids));
+  } catch {
+    /* private mode / storage full: the order just is not remembered */
+  }
+}
+
 export function useChatMemory(props: { activeTeamId?: string | null } = {}) {
   const { t } = useTranslation();
   const scopeTabLabels = useScopeTabLabels();
@@ -477,11 +495,34 @@ export function useChatMemory(props: { activeTeamId?: string | null } = {}) {
   );
 
   // ── 过滤与辅助 ──
+  // The order the user gave the blocks of the selected agent (kept in this browser, per agent).
+  // Blocks with no saved place (new ones) come first.
+  const [orderVersion, setOrderVersion] = useState(0);
+  const orderKey = activeTeamId && agentFilter ? `memory-hub.block-order.${activeTeamId}.${agentFilter}` : '';
   const filtered = useMemo(() => {
-    if (scopeTab === 'fixed')
-      return agentFilter ? blocks.filter((b) => b.agent_id === agentFilter) : [];
-    return blocks;
-  }, [blocks, scopeTab, agentFilter]);
+    if (scopeTab !== 'fixed') return blocks;
+    if (!agentFilter) return [];
+    const list = blocks.filter((b) => b.agent_id === agentFilter);
+    const saved = readBlockOrder(orderKey);
+    if (saved.length === 0) return list;
+    const rank = new Map(saved.map((id, i) => [id, i]));
+    const placed = list
+      .filter((b) => rank.has(b.id))
+      .sort((a, b) => rank.get(a.id)! - rank.get(b.id)!);
+    return [...list.filter((b) => !rank.has(b.id)), ...placed];
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [blocks, scopeTab, agentFilter, orderKey, orderVersion]);
+
+  /** Moves a block one place up (-1) or down (+1) in the list and remembers the order. */
+  function moveBlock(id: string, delta: -1 | 1) {
+    const ids = filtered.map((b) => b.id);
+    const from = ids.indexOf(id);
+    const to = from + delta;
+    if (from < 0 || to < 0 || to >= ids.length || !orderKey) return;
+    [ids[from], ids[to]] = [ids[to], ids[from]];
+    writeBlockOrder(orderKey, ids);
+    setOrderVersion((v) => v + 1);
+  }
 
   function agentLabel(id?: string): string {
     if (!id) return '';
@@ -645,6 +686,7 @@ export function useChatMemory(props: { activeTeamId?: string | null } = {}) {
     pageSize,
     windowTotal,
     filtered,
+    moveBlock,
     // handlers
     fetchBlocks,
     refreshLayer,
