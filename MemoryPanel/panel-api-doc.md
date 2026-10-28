@@ -94,6 +94,7 @@
 | POST | `/api/v1/chat-memory/set-agent-fixed` | 批量设置 Agent 固定记忆 |
 | POST | `/api/v1/chat-memory/allocate` | 分配（借入）记忆到 Agent |
 | POST | `/api/v1/chat-memory/unbind` | 从 Agent 解绑记忆 |
+| POST | `/api/v1/chat-memory/rename-block` | 给 session 记忆块命名（Owner-only） |
 | POST | `/api/v1/chat-memory/layer` | L0/L1/L2/L3 分层懒加载 |
 | POST | `/api/v1/chat-memory/clear` | 一键清空记忆内容（保留资产） |
 | POST | `/api/v1/chat-memory/layer-delete` | 分层批量删除（L0/L1） |
@@ -499,6 +500,18 @@ POST /api/v1/skill/list
 **响应** `data`：`{ unbound: true, agent_id, block_id }`。
 
 **错误**：`MISSING_BLOCK_ID`、`MISSING_AGENT_ID`、`MISSING_TEAM_ID`、`CANNOT_UNBIND_SELF_CHAT_MEMORY`、`AGENT_NOT_FOUND`、`AGENT_NOT_IN_TEAM`、`NOT_YOUR_AGENT`、`BLOCK_NOT_FOUND`、`NOT_CHAT_MEMORY`、`BINDING_NOT_FOUND`。
+
+### POST /chat-memory/rename-block
+
+给 session 记忆块命名（Claude Code / Codex / Antigravity 的每个 session 一个记忆块，由隐藏的 session agent 持有）。名称存在该 session agent 上，记忆块标题跟着变；同时在其 metadata 标记 `custom_name`，之后 hook 不再按 session 的 repo 自动改名。仅资产 Owner。
+
+**请求体**：`{ block_id: string, name: string }`，`name` 去空白后 1–80 字。
+
+**响应** `data`：更新后的 agent。
+
+**错误**：`MISSING_BLOCK_ID`、`MISSING_NAME`、`NAME_TOO_LONG`、`NOT_AGENT_MEMORY`、`INVALID_USER_KEY`、`BLOCK_NOT_FOUND`、`NOT_ASSET_OWNER`、`NOT_SESSION_BLOCK`（repo agent / New-chat 自己的块请用 `/meta/agent/update` 改名）。
+
+`/chat-memory/agent-fixed` 返回的 session 记忆块另带 `name`（可改名）与 `repos`（`[{ name, hash, url? }]`，所属 repo）；其他记忆块没有这两个字段。
 
 ### POST /chat-memory/layer
 

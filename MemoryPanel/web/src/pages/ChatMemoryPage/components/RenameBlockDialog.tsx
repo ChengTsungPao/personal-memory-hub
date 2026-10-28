@@ -41,7 +41,7 @@ export function RenameBlockDialog({
     <Modal
       visible
       caption={t('memory.renameBlock.title')}
-      size="m"
+      size="min(520px, calc(100vw - 24px))"
       onClose={onClose}
       disableEscape={submitting}
     >
