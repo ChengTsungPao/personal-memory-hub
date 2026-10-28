@@ -1379,3 +1379,23 @@ a._memory-repo-tag:hover {
 ._memory-card-rename {
   margin-right: 8px;
 }
+
+/* ===== 编辑记忆块的 repo ===== */
+._memory-edit-repos-block {
+  margin-bottom: 12px;
+  color: var(--tea-color-text-secondary);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+._memory-edit-repos-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+._memory-edit-repos-url {
+  margin-left: 8px;
+  color: var(--tea-color-text-tertiary);
+  font-size: 12px;
+}

@@ -70,3 +70,14 @@ export function repoHash(agent: WithMeta | undefined): string {
     return '';
   }
 }
+
+/** A repo agent's full root commit hash (its identity), or "". */
+export function repoHashOf(agent: WithMeta | undefined): string {
+  if (!agent) return '';
+  try {
+    const root = JSON.parse(agent.metadata_json || '{}')?.root_commit;
+    return typeof root === 'string' ? root : '';
+  } catch {
+    return '';
+  }
+}

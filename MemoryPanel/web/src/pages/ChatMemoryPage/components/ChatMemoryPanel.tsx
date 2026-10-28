@@ -16,6 +16,7 @@ import { ImportBlockDialog } from './ImportBlockDialog';
 import { AllocateMemoryDialog } from './AllocateMemoryDialog';
 import { RenameAgentDialog } from './RenameAgentDialog';
 import { RenameBlockDialog } from './RenameBlockDialog';
+import { EditReposDialog } from './EditReposDialog';
 import { RepoTags } from './RepoTags';
 import { AssetPageHeader } from '@/components/asset/AssetPageHeader';
 import { AssetSplitLayout } from '@/components/asset/AssetSplitLayout';
@@ -27,7 +28,7 @@ import {
 import { UserBadge } from '@/components/asset/UserBadge';
 import { useChatMemory } from '../hooks/useChatMemory';
 import '../styles/chat-memory-panel.css';
-import { repoAgentLabel, repoUrl } from '@/lib/memory-agents';
+import { agentKind, repoAgentLabel, repoHashOf, repoUrl } from '@/lib/memory-agents';
 
 
 export default function ChatMemoryPanel(
@@ -41,6 +42,7 @@ export default function ChatMemoryPanel(
 
   const [showRename, setShowRename] = useState(false);
   const [renamingBlock, setRenamingBlock] = useState<{ id: string; name: string } | null>(null);
+  const [editingRepos, setEditingRepos] = useState<{ id: string; title: string; repos: Array<{ hash: string }> } | null>(null);
 
   const {
     // context
@@ -195,6 +197,9 @@ export default function ChatMemoryPanel(
                 : isPrivateAndNotOwner
                   ? t('memory.allocate.privateDisabled')
                   : undefined;
+              // A session block belongs to repos (Edit repos); allocating it to an agent would be
+              // put back by the session's hooks.
+              if (selected?.name) return null;
               return (
                 <Button onClick={() => setShowAllocate(true)} disabled={disabled} tooltip={tooltip}>
                   {t('memory.allocateToAgent')}
@@ -278,6 +283,19 @@ export default function ChatMemoryPanel(
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation();
+                            setEditingRepos({ id: b.id, title: b.title, repos: b.repos ?? [] });
+                          }}
+                          title={t('memory.editRepos.tooltip')}
+                          className="_memory-card-unbind _memory-card-rename"
+                        >
+                          {t('memory.editRepos')}
+                        </button>
+                      )}
+                      {isOwner && b.name && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
                             setRenamingBlock({ id: b.id, name: b.name! });
                           }}
                           title={t('memory.renameBlock.tooltip')}
@@ -293,10 +311,10 @@ export default function ChatMemoryPanel(
                             e.stopPropagation();
                             handleDeleteBlock(b.id);
                           }}
-                          title={t('memory.unbind.tooltip')}
+                          title={b.name ? t('memory.delete.tooltip') : t('memory.unbind.tooltip')}
                           className="_memory-card-unbind"
                         >
-                          {t('memory.unbind')}
+                          {b.name ? t('memory.delete') : t('memory.unbind')}
                         </button>
                       ) : (
                         <AssetItemTime>
@@ -376,6 +394,37 @@ export default function ChatMemoryPanel(
               fetchBlocks();
             } catch (e: unknown) {
               tea.notify.error(e instanceof Error ? e.message : t('memory.notify.renameBlockFailed'));
+            }
+          }}
+        />
+      )}
+
+      {editingRepos && (
+        <EditReposDialog
+          block={editingRepos}
+          repoAgents={ownedTeamAgents
+            .filter((a) => agentKind(a) === 'repo')
+            .map((a) => ({
+              agent_id: a.agent_id,
+              label: repoAgentLabel(a, ownedTeamAgents),
+              url: repoUrl(a),
+            }))}
+          selected={ownedTeamAgents
+            .filter(
+              (a) =>
+                agentKind(a) === 'repo' &&
+                editingRepos.repos.some((r) => repoHashOf(a) === r.hash),
+            )
+            .map((a) => a.agent_id)}
+          onClose={() => setEditingRepos(null)}
+          onSaved={async (ids) => {
+            try {
+              await chatMemoryApi.setRepos(editingRepos.id, ids);
+              tea.notify.success(t('memory.notify.reposSaved'));
+              setEditingRepos(null);
+              fetchBlocks();
+            } catch (e: unknown) {
+              tea.notify.error(e instanceof Error ? e.message : t('memory.notify.reposSaveFailed'));
             }
           }}
         />

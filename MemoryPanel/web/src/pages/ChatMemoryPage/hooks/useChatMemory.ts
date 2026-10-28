@@ -529,6 +529,25 @@ export function useChatMemory(props: { activeTeamId?: string | null } = {}) {
     const teamId = activeTeamId;
     const agentId = block?.agent_id;
     if (!teamId || !agentId) return;
+    if (block?.name) {
+      // A session block is deleted outright: unbinding it would only hide it from the list
+      // (and a live session's hook puts the repo bindings back anyway).
+      await confirmThenRun(
+        {
+          message: t('memory.confirm.deleteBlock'),
+          description: t('memory.confirm.deleteBlock.desc'),
+          okText: t('memory.confirm.deleteBlock.ok'),
+        },
+        async () => {
+          await chatMemoryApi.deleteBlock(id);
+          setBlocks((prev) => prev.filter((b) => b.id !== id));
+          if (selectedId === id) setSelectedId(null);
+          tea.notify.success(t('memory.notify.blockDeleted'));
+        },
+        (e) => tea.notify.error((e as Error)?.message || t('memory.notify.blockDeleteFailed')),
+      );
+      return;
+    }
     await confirmThenRun(
       {
         message: t('memory.confirm.unbind'),

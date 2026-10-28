@@ -160,6 +160,16 @@ export const chatMemoryApi = {
   renameBlock: (blockId: string, name: string) =>
     chatMemoryCall<unknown>('rename-block', { block_id: blockId, name }),
 
+  /** 删除 session 记忆块（连同对话与记忆，并从所有 Agent 移除）（Owner-only） */
+  deleteBlock: (blockId: string) => chatMemoryCall<unknown>('delete-block', { block_id: blockId }),
+
+  /** 设置 session 记忆块所属的 repo（完整清单；空 = 没有 repo，归 New-chat）（Owner-only） */
+  setRepos: (blockId: string, repoAgentIds: string[]) =>
+    chatMemoryCall<{ block_id: string; repos: ChatMemoryRepo[] }>('set-repos', {
+      block_id: blockId,
+      repo_agent_ids: repoAgentIds,
+    }),
+
   /** 手工建独立 UserAsset */
   create: (teamId: string, title: string, scope: 'team' | 'private', description?: string) =>
     chatMemoryCall<ChatMemoryBlock>('create', { team_id: teamId, title, scope, description }),
