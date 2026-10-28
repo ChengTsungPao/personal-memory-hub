@@ -11,6 +11,31 @@
   color: var(--tea-color-text-primary);
 }
 
+/*
+ * Tailwind typography (`prose prose-slate`) brings its own text colors, made for a light page: in
+ * the dark theme headings, body text and quotes came out dark on dark. Point every one of them at
+ * the Tea tokens, which follow the theme. (Two classes, so this wins over `.prose-slate`.)
+ */
+._md-view.prose {
+  --tw-prose-body: var(--tea-color-text-primary);
+  --tw-prose-headings: var(--tea-color-text-primary);
+  --tw-prose-lead: var(--tea-color-text-secondary);
+  --tw-prose-links: var(--tea-color-text-link-default);
+  --tw-prose-bold: var(--tea-color-text-primary);
+  --tw-prose-counters: var(--tea-color-text-secondary);
+  --tw-prose-bullets: var(--tea-color-text-tertiary);
+  --tw-prose-hr: var(--tea-color-border-primary-default);
+  --tw-prose-quotes: var(--tea-color-text-secondary);
+  --tw-prose-quote-borders: var(--tea-color-border-primary-default);
+  --tw-prose-captions: var(--tea-color-text-tertiary);
+  --tw-prose-kbd: var(--tea-color-text-primary);
+  --tw-prose-code: var(--tea-color-text-primary);
+  --tw-prose-pre-code: var(--tea-color-text-primary);
+  --tw-prose-pre-bg: var(--tea-color-bg-secondary-default);
+  --tw-prose-th-borders: var(--tea-color-border-primary-default);
+  --tw-prose-td-borders: var(--tea-color-border-primary-default);
+}
+
 /* bare：嵌入卡片内部使用，去掉外壳，由外层卡片承载边框/背景 */
 ._md-view--bare {
   padding: 0;

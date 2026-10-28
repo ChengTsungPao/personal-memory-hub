@@ -274,6 +274,10 @@ export async function bindSession(cfg, sessionId, cwd, edit) {
     const agentMeta = parseMeta(agent);
     if (repo.url && agentMeta.url !== repo.url) {
       await meta(cfg, "agent/update", { agent_id: agent.agent_id, metadata_json: JSON.stringify({ ...agentMeta, url: repo.url }) });
+    } else if (!repo.url && agentMeta.url) {
+      // A repo added by hand before links were recorded (or one not cloned here) has none of its
+      // own: take it from the repo agent so the tag links to the repo.
+      repo.url = agentMeta.url;
     }
     targets.push({ agent_id: agent.agent_id, name: agent.name });
   }
