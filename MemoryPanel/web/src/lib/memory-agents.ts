@@ -49,6 +49,14 @@ export function nameLabel(agent: { name: string; id: string }, all: Array<{ name
   return all.filter((a) => a.name === agent.name).length < 2 ? agent.name : `${agent.name}（${agent.id}）`;
 }
 
+/**
+ * A memory block's name as shown: MemoryCore names an agent's block "Memory of <agent name>" (and
+ * renames it with the agent), which is kept as is in the data and dropped for display.
+ */
+export function blockDisplayName(title: string): string {
+  return title.replace(/^Memory of\s+/i, '');
+}
+
 /** A repo agent's link (recorded by the hooks from the repo's origin remote), or "". */
 export function repoUrl(agent: WithMeta | undefined): string {
   if (!agent) return '';

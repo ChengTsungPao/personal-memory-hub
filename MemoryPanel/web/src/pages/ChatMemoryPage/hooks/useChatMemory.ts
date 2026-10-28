@@ -4,7 +4,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { isRepoOrNewChatAgent } from '@/lib/memory-agents';
+import { blockDisplayName, isRepoOrNewChatAgent } from '@/lib/memory-agents';
 import { useAgents, useTeams } from '@/services';
 import { readAuth } from '@/components/LoginGate';
 import { tea, confirmThenRun } from '@/lib/tea-bridge';
@@ -121,7 +121,7 @@ export function useChatMemory(props: { activeTeamId?: string | null } = {}) {
       const ownBlock = scopeTab === 'fixed' ? `chat_memory-${activeTeamId}-${agentFilter}` : '';
       const mapped: MemoryBlock[] = res.items.filter((b) => b.id !== ownBlock).map((b) => ({
         id: b.id,
-        title: b.title,
+        title: blockDisplayName(b.title),
         summary: b.summary ?? '',
         tags: [],
         updated_at_ms: b.updated_at_ms,
