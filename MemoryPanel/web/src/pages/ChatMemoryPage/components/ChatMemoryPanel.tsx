@@ -46,7 +46,6 @@ export default function ChatMemoryPanel(
   const {
     // context
     activeTeam,
-    activeTeamId,
     currentUserId,
     ownedTeamAgents,
     scopeTabLabels,
