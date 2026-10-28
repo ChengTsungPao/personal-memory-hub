@@ -296,3 +296,23 @@ test("the repo agent keeps the repo's link", async () => {
   const { targets } = await bindSession(cfg, "sess-12", a);
   assert.equal(JSON.parse(agents.get(targets[0].agent_id).metadata_json).url, "https://github.com/someone/a-repo");
 });
+
+test("a tag added before links were recorded gets the repo agent's link", async () => {
+  const root = tmp();
+  const a = makeRepo(path.join(root, "a"));
+  git(a, "remote", "add", "origin", "git@github.com:someone/a-repo.git");
+  const first = await bindSession(cfg, "sess-13", a);
+
+  // The block as an older hook left it: the tag and the manual add carry no link.
+  const block = agents.get(first.sessionAgentId);
+  const m = JSON.parse(block.metadata_json);
+  const bare = m.repos.map(({ url, ...rest }) => rest);
+  block.metadata_json = JSON.stringify({ ...m, repos: bare, added: bare });
+
+  // The session's folder is no longer there to scan, only the manual add remains.
+  const elsewhere = tmp();
+  await bindSession(cfg, "sess-13", elsewhere);
+  const tags = JSON.parse(agents.get(first.sessionAgentId).metadata_json).repos;
+  assert.equal(tags.length, 1);
+  assert.equal(tags[0].url, "https://github.com/someone/a-repo");
+});
