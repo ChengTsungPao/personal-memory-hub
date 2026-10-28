@@ -26,6 +26,9 @@
  *   POST /chat-memory/patch-scope     改 scope（team ↔ private）
  *   POST /chat-memory/allocate        分配（借入），含 ≤ 2 校验
  *   POST /chat-memory/unbind          从 agent 解绑
+ *   POST /chat-memory/rename-block    给 session 记忆块命名（Owner-only）
+ *   POST /chat-memory/delete-block    删除 session 记忆块（Owner-only）
+ *   POST /chat-memory/set-repos       设置 session 记忆块所属的 repo（Owner-only）
  *   POST /chat-memory/layer           L0/L1/L2/L3 分层懒加载
  *   POST /chat-memory/layer-delete    L0/L1 列表批量删除（Owner-only）
  *   POST /chat-memory/clear           一键清空内容、保留资产（Owner-only）
@@ -91,6 +94,7 @@ interface AgentRaw {
   team_id: string;
   owner_user_id: string;
   name: string;
+  metadata_json?: string | null;
 }
 interface FixedAssetRaw {
   asset_id: string;
@@ -117,6 +121,18 @@ interface MemoryBlockOut {
   scope?: "team" | "private";
   bound_agent_count?: number;
   agent_id?: string;
+  /** A session block's own name (its session agent's) and the repos it belongs to. */
+  name?: string;
+  repos?: Array<{ name: string; hash: string; url?: string }>;
+}
+
+/** An agent's metadata_json as an object ({} when unset or not JSON). */
+function agentMeta(agent: { metadata_json?: string | null }): Record<string, any> {
+  try {
+    return JSON.parse(agent.metadata_json || "{}") ?? {};
+  } catch {
+    return {};
+  }
 }
 
 export function registerChatMemoryRoutes(api: Hono, deps: PanelDeps): void {
@@ -272,6 +288,31 @@ export function registerChatMemoryRoutes(api: Hono, deps: PanelDeps): void {
           } catch {
             /* fallback 空 */
           }
+          // A session block (Claude Code / Codex / Antigravity session) belongs to a hidden
+          // session agent whose metadata holds its repos; others carry neither.
+          let sessionExtra: Pick<MemoryBlockOut, "name" | "repos"> = {};
+          const owning = parseChatMemoryAssetId(it.asset_id);
+          if (owning && owning.agentId !== agentId) {
+            try {
+              const sEnv = await deps.metaKernel.invoke(
+                "agent/get",
+                { agent_id: owning.agentId },
+                ctx,
+              );
+              if (sEnv.code === 0 && sEnv.data) {
+                const sAgent = sEnv.data as AgentRaw;
+                const m = agentMeta(sAgent);
+                if (m.kind === "session") {
+                  sessionExtra = {
+                    name: sAgent.name,
+                    repos: Array.isArray(m.repos) ? m.repos : [],
+                  };
+                }
+              }
+            } catch {
+              /* a block without its agent still lists */
+            }
+          }
           return {
             id: it.asset_id,
             title: it.name,
@@ -283,6 +324,7 @@ export function registerChatMemoryRoutes(api: Hono, deps: PanelDeps): void {
             // TEMP：本地测试展示用；生产应改为懒加载
             layer_counts: emptyLayers(),
             agent_id: agentId,
+            ...sessionExtra,
           };
         }),
       );
@@ -1382,6 +1424,212 @@ export function registerChatMemoryRoutes(api: Hono, deps: PanelDeps): void {
       );
     }
   });
+
+  // ==========================================================================
+  // Session memory blocks (Claude Code / Codex / Antigravity): one block per session, held by a
+  // hidden session agent whose metadata has `repos` (the repos it belongs to, shown as tags) and
+  // `added` / `removed` (manual repo edits). The hooks recompute a live session's repos from its
+  // folder scan plus `added` minus `removed` every turn, so these routes write `added`/`removed`
+  // (and apply the bindings at once) instead of only touching the bindings, which the hooks would
+  // put back. All are owner only and session blocks only.
+  // ==========================================================================
+
+  /** The session agent behind a block, checked for owner and kind; or the response to return. */
+  async function loadOwnedSessionAgent(
+    deps: PanelDeps,
+    ctx: MetaCallContext,
+    blockId: string,
+  ): Promise<
+    | { agent: AgentRaw; meta: Record<string, any>; teamId: string }
+    | { status: number; code: string }
+    | { envelope: MetaEnvelope<unknown> }
+  > {
+    const parsed = parseChatMemoryAssetId(blockId);
+    if (!parsed) return { status: 400, code: "NOT_AGENT_MEMORY" };
+    const meUserId = await resolveCallerUserId(deps, ctx);
+    if (!meUserId) return { status: 401, code: "INVALID_USER_KEY" };
+    const env = await deps.metaKernel.invoke("agent/get", { agent_id: parsed.agentId }, ctx);
+    if (env.code === 404 || (env.code === 0 && !env.data)) return { status: 404, code: "BLOCK_NOT_FOUND" };
+    if (env.code !== 0) return { envelope: env };
+    const agent = env.data as AgentRaw;
+    if (agent.owner_user_id !== meUserId) return { status: 403, code: "NOT_ASSET_OWNER" };
+    const meta = agentMeta(agent);
+    if (meta.kind !== "session") return { status: 400, code: "NOT_SESSION_BLOCK" };
+    return { agent, meta, teamId: parsed.teamId };
+  }
+
+  // POST /chat-memory/rename-block   body: { block_id, name }
+  //
+  // Names a block. The name is the session agent's name (the block's title follows it);
+  // `custom_name` in its metadata stops the hooks from renaming it after the session's repos
+  // again. (A repo agent is renamed with /meta/agent/update.)
+  api.post(
+    "/chat-memory/rename-block",
+    validatePanelMetaHeaders(deps),
+    async (c) => {
+      const ctx = buildCtx(c);
+      const body = await readJson(c);
+      const blockId = requiredBlockId(body);
+      const name = typeof body?.name === "string" ? body.name.trim() : "";
+      if (!blockId) return respondControlError(c, 400, "MISSING_BLOCK_ID");
+      if (!name) return respondControlError(c, 400, "MISSING_NAME");
+      if (name.length > 80) return respondControlError(c, 400, "NAME_TOO_LONG");
+
+      const loaded = await loadOwnedSessionAgent(deps, ctx, blockId);
+      if ("envelope" in loaded) return respondEnvelope(c, loaded.envelope);
+      if ("status" in loaded) return respondControlError(c, loaded.status, loaded.code);
+
+      const env = await deps.metaKernel.invoke(
+        "agent/update",
+        {
+          agent_id: loaded.agent.agent_id,
+          name,
+          metadata_json: JSON.stringify({ ...loaded.meta, custom_name: true }),
+        },
+        ctx,
+      );
+      return respondEnvelope(c, env);
+    },
+  );
+
+  // POST /chat-memory/delete-block   body: { block_id }
+  //
+  // Deletes a block with its conversations and memories, and removes it from every agent
+  // (archives its session agent). A live session gets a new empty block on its next turn.
+  api.post(
+    "/chat-memory/delete-block",
+    validatePanelMetaHeaders(deps),
+    async (c) => {
+      const ctx = buildCtx(c);
+      const body = await readJson(c);
+      const blockId = requiredBlockId(body);
+      if (!blockId) return respondControlError(c, 400, "MISSING_BLOCK_ID");
+
+      const loaded = await loadOwnedSessionAgent(deps, ctx, blockId);
+      if ("envelope" in loaded) return respondEnvelope(c, loaded.envelope);
+      if ("status" in loaded) return respondControlError(c, loaded.status, loaded.code);
+
+      const env = await deps.metaKernel.invoke(
+        "agent/archive",
+        { agent_id: loaded.agent.agent_id },
+        ctx,
+      );
+      return respondEnvelope(c, env);
+    },
+  );
+
+  // POST /chat-memory/set-repos   body: { block_id, repo_agent_ids: string[] }
+  //
+  // Sets the repos a block belongs to (the full list; empty = no repo, bound to New-chat).
+  // Recorded as manual edits (`added` for repos the folder scan may not find, `removed` for ones
+  // it does, so a removed repo is not added back), the tags (`repos`) updated, and the repo
+  // agents' bindings applied now.
+  api.post(
+    "/chat-memory/set-repos",
+    validatePanelMetaHeaders(deps),
+    async (c) => {
+      const ctx = buildCtx(c);
+      const body = await readJson(c);
+      const blockId = requiredBlockId(body);
+      if (!blockId) return respondControlError(c, 400, "MISSING_BLOCK_ID");
+      const wanted = Array.isArray(body?.repo_agent_ids)
+        ? [...new Set(body.repo_agent_ids.filter((v: unknown): v is string => typeof v === "string"))]
+        : null;
+      if (!wanted) return respondControlError(c, 400, "MISSING_REPO_AGENT_IDS");
+
+      const loaded = await loadOwnedSessionAgent(deps, ctx, blockId);
+      if ("envelope" in loaded) return respondEnvelope(c, loaded.envelope);
+      if ("status" in loaded) return respondControlError(c, loaded.status, loaded.code);
+      const { agent, meta, teamId } = loaded;
+
+      let listError: MetaEnvelope<unknown> | null = null;
+      const teamAgents = await fetchAllMetaListItems<AgentRaw>(
+        deps,
+        ctx,
+        "agent/list",
+        { team_id: teamId, status: "active" },
+        (env) => {
+          listError = env;
+        },
+      );
+      if (listError) return respondEnvelope(c, listError);
+      const repoAgents = teamAgents.filter((a) => agentMeta(a).kind === "repo");
+      const newChat = teamAgents.find((a) => agentMeta(a).kind === "new-chat");
+
+      const chosen: AgentRaw[] = [];
+      for (const id of wanted) {
+        const hit = repoAgents.find((a) => a.agent_id === id);
+        if (!hit) return respondControlError(c, 400, "UNKNOWN_REPO_AGENT");
+        chosen.push(hit);
+      }
+      const repoOf = (a: AgentRaw) => {
+        const m = agentMeta(a);
+        return { name: a.name, hash: String(m.root_commit ?? ""), ...(m.url ? { url: String(m.url) } : {}) };
+      };
+      const repos = chosen.map(repoOf).filter((r) => r.hash);
+      const wantedHashes = new Set(repos.map((r) => r.hash));
+
+      const oldHashes: string[] = (Array.isArray(meta.repos) ? meta.repos : []).map((r: any) => r.hash);
+      const added = (Array.isArray(meta.added) ? meta.added : []).filter((r: any) => wantedHashes.has(r.hash));
+      for (const r of repos) {
+        if (!oldHashes.includes(r.hash) && !added.some((x: any) => x.hash === r.hash)) added.push(r);
+      }
+      const removed = new Set<string>(
+        (Array.isArray(meta.removed) ? meta.removed : []).filter((h: string) => !wantedHashes.has(h)),
+      );
+      for (const h of oldHashes) if (!wantedHashes.has(h)) removed.add(h);
+
+      // Bindings: the repo agents (and New-chat) this block is bound to now vs wanted.
+      const assetId = blockId;
+      const boundEnv = await deps.metaKernel.invoke(
+        "agent-fixed-asset/bindings-of-asset",
+        { asset_id: assetId },
+        ctx,
+      );
+      if (boundEnv.code !== 0) return respondEnvelope(c, boundEnv);
+      const boundIds = new Set<string>(
+        ((boundEnv.data as { items?: Array<{ agent_id: string }> })?.items ?? [])
+          .map((b) => b.agent_id)
+          .filter((id) => id !== agent.agent_id),
+      );
+      const managed = new Set([...repoAgents, ...(newChat ? [newChat] : [])].map((a) => a.agent_id));
+      const target = new Set<string>(chosen.map((a) => a.agent_id));
+      if (target.size === 0 && newChat) target.add(newChat.agent_id);
+
+      for (const id of target) {
+        if (boundIds.has(id)) continue;
+        const env = await deps.metaKernel.invoke(
+          "agent-fixed-asset/add",
+          {
+            agent_id: id,
+            binding: { asset_id: assetId, asset_type: "chat_memory", created_by: agent.owner_user_id },
+          },
+          ctx,
+        );
+        if (env.code !== 0) return respondEnvelope(c, env);
+      }
+      for (const id of boundIds) {
+        if (target.has(id) || !managed.has(id)) continue; // leave bindings made elsewhere alone
+        const env = await deps.metaKernel.invoke(
+          "agent-fixed-asset/remove",
+          { agent_id: id, asset_id: assetId },
+          ctx,
+        );
+        if (env.code !== 0) return respondEnvelope(c, env);
+      }
+
+      const env = await deps.metaKernel.invoke(
+        "agent/update",
+        {
+          agent_id: agent.agent_id,
+          metadata_json: JSON.stringify({ ...meta, repos, added, removed: [...removed] }),
+        },
+        ctx,
+      );
+      if (env.code !== 0) return respondEnvelope(c, env);
+      return respondEnvelope(c, okEnvelope(c, { block_id: blockId, repos }));
+    },
+  );
 
   // ==========================================================================
   // POST /chat-memory/clear  body: { memory_ids: string[] }

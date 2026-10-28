@@ -131,6 +131,8 @@ export function useChatMemory(props: { activeTeamId?: string | null } = {}) {
         scope: b.scope,
         layer_counts: b.layer_counts,
         bound_agent_count: b.bound_agent_count,
+        name: b.name,
+        repos: b.repos,
         layers: { L0: [], L1: [], L2: [], L3: [] },
         // 初始只填后端返回的**真实**计数（>0）；为 0 / 未落地的层留 undefined＝「未知」。
         // 未知层的徽章显示占位，用户切到该 layer tab 时才按需请求真实计数，
@@ -527,6 +529,25 @@ export function useChatMemory(props: { activeTeamId?: string | null } = {}) {
     const teamId = activeTeamId;
     const agentId = block?.agent_id;
     if (!teamId || !agentId) return;
+    if (block?.name) {
+      // A session block is deleted outright: unbinding it would only hide it from the list
+      // (and a live session's hook puts the repo bindings back anyway).
+      await confirmThenRun(
+        {
+          message: t('memory.confirm.deleteBlock'),
+          description: t('memory.confirm.deleteBlock.desc'),
+          okText: t('memory.confirm.deleteBlock.ok'),
+        },
+        async () => {
+          await chatMemoryApi.deleteBlock(id);
+          setBlocks((prev) => prev.filter((b) => b.id !== id));
+          if (selectedId === id) setSelectedId(null);
+          tea.notify.success(t('memory.notify.blockDeleted'));
+        },
+        (e) => tea.notify.error((e as Error)?.message || t('memory.notify.blockDeleteFailed')),
+      );
+      return;
+    }
     await confirmThenRun(
       {
         message: t('memory.confirm.unbind'),
