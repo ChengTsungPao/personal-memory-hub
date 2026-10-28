@@ -680,7 +680,6 @@ export const enUS = {
   'memory.notify.renameFailed': 'Failed to update agent name',
   'memory.notify.agentDeleted': 'Agent deleted',
   'memory.notify.deleteAgentFailed': 'Failed to delete agent',
-    'This memory has been set to private by its owner and cannot be allocated to other Agents',
   'memory.import': 'Import Memory',
   'memory.import.tooltip.noAgent': 'No agent in the current team. Please create an agent first.',
   'memory.blockList': 'Memory Blocks',

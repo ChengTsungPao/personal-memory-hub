@@ -128,4 +128,9 @@
     min-width: 0;
     margin: 0;
   }
+
+  /* An odd number of buttons: the last one takes the whole row instead of sitting alone. */
+  ._asset-page-header-actions > :last-child:nth-child(odd) {
+    grid-column: 1 / -1;
+  }
 }
