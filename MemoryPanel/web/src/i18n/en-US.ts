@@ -668,7 +668,6 @@ export const enUS = {
   'memory.scope.scope': 'Allocatable',
   'memory.scope.personal': 'My Assets',
   'memory.noAgent': 'No Agent Available',
-  'memory.allocateToAgent': 'Allocate to Agent',
   'memory.renameAgent': 'Rename',
   'memory.deleteAgent': 'Delete Agent',
   'memory.renameAgent.title': 'Edit Agent Name · {{name}}',
@@ -681,8 +680,6 @@ export const enUS = {
   'memory.notify.renameFailed': 'Failed to update agent name',
   'memory.notify.agentDeleted': 'Agent deleted',
   'memory.notify.deleteAgentFailed': 'Failed to delete agent',
-  'memory.allocate.disabled': 'Please select a memory block first',
-  'memory.allocate.privateDisabled':
     'This memory has been set to private by its owner and cannot be allocated to other Agents',
   'memory.import': 'Import Memory',
   'memory.import.tooltip.noAgent': 'No agent in the current team. Please create an agent first.',
@@ -732,8 +729,6 @@ export const enUS = {
     'Import succeeded · {{count}} messages. Distilling L1/L2/L3 in the background.',
   'memory.notify.importFailed': 'Import failed',
   'memory.notify.selectAgent': 'Please select an Agent first',
-  'memory.notify.allocated': 'Allocated to Agent',
-  'memory.notify.allocateFailed': 'Allocation failed',
   'memory.notify.scopeTeam': 'Switched to team-visible',
   'memory.notify.scopePrivate': 'Switched to private',
   'memory.notify.scopeFailed': 'Failed to toggle visibility',
@@ -800,25 +795,6 @@ export const enUS = {
   'memoryPersonal.private.tooltip': 'Only owner and team admin can see',
   'memoryPersonal.ownerTag.title': 'owner user: {{name}} ({{id}})',
   'memoryPersonal.ownerTag.you': ' (you)',
-
-  // ===== AllocateMemoryDialog =====
-  'allocMemory.caption': 'Allocate Memory to Agent',
-  'allocMemory.desc.team': 'Bind the team pool memory block',
-  'allocMemory.desc.team2': "to the selected agent's fixed assets.",
-  'allocMemory.desc.personal': 'Allocate the memory block',
-  'allocMemory.desc.personal2': "to the selected agent's fixed assets.",
-  'allocMemory.descLabel': 'Description',
-  'allocMemory.noAgents': 'No allocatable Agents. Possible reasons:',
-  'allocMemory.noAgents.reason1':
-    '· You haven\'t created any Agent yet — please create one in "Agent Management" first.',
-  'allocMemory.noAgents.reason2':
-    "· The selected memory block belongs to one of your Agents and cannot be allocated to the same Agent (rule: an Agent's own memory cannot be re-allocated to itself).",
-  'allocMemory.noAgents.reason3':
-    '· This memory block is already bound to all your Agents. No need to allocate again.',
-  'allocMemory.agent': 'Agent',
-  'allocMemory.agent.placeholder': 'No agent available',
-  'allocMemory.submit': 'Allocate',
-  'allocMemory.cancel': 'Cancel',
 
   // ===== ImportBlockDialog =====
   'importBlock.caption': 'Import Memory',

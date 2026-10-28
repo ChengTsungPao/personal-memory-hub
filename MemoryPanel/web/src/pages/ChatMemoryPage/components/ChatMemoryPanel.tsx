@@ -13,7 +13,6 @@ import { type ScopeTab } from '../constants/types';
 
 import { BlockDetail } from './BlockDetail';
 import { ImportBlockDialog } from './ImportBlockDialog';
-import { AllocateMemoryDialog } from './AllocateMemoryDialog';
 import { RenameAgentDialog } from './RenameAgentDialog';
 import { RenameBlockDialog } from './RenameBlockDialog';
 import { EditReposDialog } from './EditReposDialog';
@@ -66,8 +65,6 @@ export default function ChatMemoryPanel(
     rangeTooLarge,
     showImport,
     setShowImport,
-    showAllocate,
-    setShowAllocate,
     scopeTab,
     setScopeTab,
     agentFilter,
@@ -91,7 +88,6 @@ export default function ChatMemoryPanel(
     handleToggleScope,
     // helpers
     agentLabel,
-    allocatableAgents,
     isSelfChatMemory,
   } = store;
 
@@ -186,26 +182,6 @@ export default function ChatMemoryPanel(
                 </Button>
               </>
             )}
-            {(() => {
-              const isPrivateAndNotOwner =
-                !!selected &&
-                selected.scope === 'private' &&
-                selected.uploaded_by_user_id !== currentUserId;
-              const disabled = !selected || isPrivateAndNotOwner;
-              const tooltip = !selected
-                ? t('memory.allocate.disabled')
-                : isPrivateAndNotOwner
-                  ? t('memory.allocate.privateDisabled')
-                  : undefined;
-              // A session block belongs to repos (Edit repos); allocating it to an agent would be
-              // put back by the session's hooks.
-              if (selected?.name) return null;
-              return (
-                <Button onClick={() => setShowAllocate(true)} disabled={disabled} tooltip={tooltip}>
-                  {t('memory.allocateToAgent')}
-                </Button>
-              );
-            })()}
             <Button
               type="primary"
               onClick={() => setShowImport(true)}
@@ -436,25 +412,6 @@ export default function ChatMemoryPanel(
           onImported={handleImport}
           agents={ownedTeamAgents.map((a) => ({ agent_id: a.agent_id, name: a.name }))}
           defaultAgentId={scopeTab === 'fixed' && agentFilter ? agentFilter : ''}
-        />
-      )}
-
-      {showAllocate && selected && (
-        <AllocateMemoryDialog
-          memoryTitle={selected.title}
-          agents={allocatableAgents(selected)}
-          memorySource="team"
-          onClose={() => setShowAllocate(false)}
-          onAllocated={async (agentId) => {
-            try {
-              await chatMemoryApi.allocate(activeTeamId!, selected.id, agentId);
-              tea.notify.success(t('memory.notify.allocated'));
-              setShowAllocate(false);
-              fetchBlocks();
-            } catch (e: any) {
-              tea.notify.error(e?.message || t('memory.notify.allocateFailed'));
-            }
-          }}
         />
       )}
     </div>
