@@ -328,6 +328,34 @@ export class StatefulPipelineManager {
   }
 
   /**
+   * Queue an L2 run for a profile key now, without waiting for an L1 event to arm its timer.
+   * Used by `/v3/chat-memory/rebuild`: a block whose L1 rows were moved in has no L1 event coming,
+   * so its L2 (and the L3 that follows it) would never be scheduled. The run reads L1 newer than
+   * the key's L2 cursor; a key with no state yet starts from the first row.
+   */
+  async enqueueL2(sessionKey: string, instanceId?: string, teamId?: string, agentId?: string): Promise<void> {
+    if (this.destroyed) return;
+    const effectiveId = instanceId ?? this.defaultInstanceId;
+    if (effectiveId === "__unset__") {
+      this.logger?.error?.(`${TAG} enqueueL2 called without explicit instanceId (session=${sessionKey})`);
+      return;
+    }
+    const now = Date.now();
+    await this.stateBackend.enqueueTask({
+      id: `L2-rebuild-${sessionKey}-${now}`,
+      type: "L2",
+      instanceId: effectiveId,
+      sessionId: sessionKey,
+      teamId,
+      agentId,
+      priority: 1,
+      data: { instanceId: effectiveId, teamId, agentId, triggeredBy: "rebuild", ...serializeTraceContext() },
+      createdAt: now,
+    });
+    this.logger?.debug?.(`${TAG} [${effectiveId}/${sessionKey}] L2 rebuild task enqueued`);
+  }
+
+  /**
    * L2 完成后设置 maxInterval timer（由 Worker 调用）
    */
   async armL2MaxInterval(sessionKey: string, instanceId?: string, teamId?: string, agentId?: string): Promise<void> {
