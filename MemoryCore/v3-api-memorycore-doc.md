@@ -679,6 +679,22 @@ upsert 知识明细（幂等）。
 { "items": [{ "session_id": "d421a1be-…", "memory_id": "chat_memory-team-x-agt-s1", "created": false, "l0_moved": 1219, "l1_moved": 329 }] }
 ```
 
+### POST /v3/chat-memory/rebuild
+
+为一个记忆块的每个 session 排队一次 L2 重建（完成后自动接 L3）。L2 平常只在该 session 有新的 L1 时才被触发；L1 是被 split / merge 搬进来的记忆块不会再有 L1 事件，所以永远没有 L2/L3，用这个接口补。鉴权同 clear。`dry_run: true` 只列出 session，不排队。
+
+```json
+{ "memory_id": "chat_memory-team-x-agt-s1", "dry_run": false }
+```
+
+- 每个 session 以自己的 L2 key 排队：该 key 还没有游标时从第一条 L1 开始，已有游标则只处理之后的 L1，所以重复调用是安全的。
+- 响应只说明排了哪些，实际工作由 pipeline worker 异步执行（LLM 调用，可能要几分钟）。
+- `503`：pipeline 或 store 不可用。
+
+```json
+{ "items": [{ "session_id": "d421a1be-…", "queued": true }] }
+```
+
 ---
 
 ## 3.5 Memory-Prompt（7）

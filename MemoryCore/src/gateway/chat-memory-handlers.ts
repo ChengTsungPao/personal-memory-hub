@@ -33,6 +33,7 @@ import { createScopedStorageAdapter, scopeProfileStorageView, type StorageAdapte
 import { buildProfileIsolationScope } from "../core/profile/profile-scope.js";
 import { MetadataError, type MetadataService } from "../metadata/service/metadata-service.js";
 import { buildChatMemoryAssetId, isSessionAgent } from "../metadata/utils/chat-memory-asset.js";
+import { buildProfileL2Key } from "../utils/pipeline-factory.js";
 import type { Logger } from "../core/types.js";
 
 const TAG = "[chat-memory-handlers]";
@@ -98,6 +99,7 @@ export interface ChatMemoryRouterDeps {
   getStore: () => IMemoryStore | undefined;
   getStorage: () => StorageAdapter | undefined;
   getMetadataService?: (instanceId: string) => Promise<MetadataService>;
+  enqueueL2?: (instanceId: string, sessionKey: string, teamId?: string, agentId?: string) => Promise<void>;
   logger: Logger;
 }
 
@@ -622,6 +624,68 @@ async function handleChatMemorySplit(
 }
 
 // ═════════════════════════════════════════════════════════════
+//  Rebuild L2/L3
+// ═════════════════════════════════════════════════════════════
+
+export const chatMemoryRebuildRequestSchema = z.object({
+  memory_id: z.string().trim().min(1),
+  /** List what would be queued, without queueing. */
+  dry_run: z.boolean().optional(),
+});
+
+export interface ChatMemoryRebuildItem {
+  session_id: string;
+  queued: boolean;
+}
+
+/**
+ * `/v3/chat-memory/rebuild`: queue L2 (then L3) for every session of a block. L2 normally runs only
+ * after an L1 event of its session; a block whose L1 rows were moved in by split or merge has no
+ * such event coming, so it never gets L2/L3. Each session is queued under its own L2 key, which
+ * starts from the first L1 row when the key has no cursor yet and otherwise continues after it.
+ * The work runs asynchronously on the pipeline worker; the response only says what was queued.
+ */
+async function handleChatMemoryRebuild(
+  body: unknown,
+  auth: V2AuthContext,
+  requestId: string,
+  depsRaw: unknown,
+): Promise<ApiResponseEnvelope> {
+  const deps = depsRaw as ChatMemoryRouterDeps;
+  const parsed = chatMemoryRebuildRequestSchema.safeParse(body);
+  if (!parsed.success) return errorEnvelope(400, formatZodErr(parsed.error), requestId);
+
+  const store = deps.getStore();
+  if (!store) return errorEnvelope(503, "Store not available", requestId);
+  if (typeof store.listContentSessionIds !== "function") {
+    return errorEnvelope(503, "Store does not support listing sessions", requestId);
+  }
+  if (!deps.getMetadataService) return errorEnvelope(503, "Metadata service not available", requestId);
+  if (!deps.enqueueL2) return errorEnvelope(503, "Pipeline not available", requestId);
+
+  try {
+    const metaSvc = await deps.getMetadataService(auth.serviceId);
+    const [target] = await metaSvc.resolveChatMemoryTargets([parsed.data.memory_id]);
+    const items: ChatMemoryRebuildItem[] = [];
+    for (const sessionId of await store.listContentSessionIds(target.team_id, target.agent_id)) {
+      if (!parsed.data.dry_run) {
+        const key = buildProfileL2Key({ teamId: target.team_id, agentId: target.agent_id, sessionId });
+        await deps.enqueueL2(auth.serviceId, key, target.team_id, target.agent_id);
+      }
+      items.push({ session_id: sessionId, queued: !parsed.data.dry_run });
+    }
+    deps.logger.info(
+      `${TAG} rebuild ${target.agent_id}: ${items.length} session(s)${parsed.data.dry_run ? " (dry run)" : " queued"}`,
+    );
+    return successEnvelope<{ items: ChatMemoryRebuildItem[] }>({ items }, requestId);
+  } catch (err) {
+    if (err instanceof MetadataError) return errorEnvelope(metadataErrorCode(err.code), err.message, requestId);
+    deps.logger.error(`${TAG} rebuild failed: ${err instanceof Error ? err.message : String(err)}`);
+    return errorEnvelope(500, "rebuild failed", requestId);
+  }
+}
+
+// ═════════════════════════════════════════════════════════════
 //  Route table
 // ═════════════════════════════════════════════════════════════
 
@@ -637,7 +701,8 @@ export function makeChatMemoryRouteTable(): Record<string, RouteHandler> {
     "/v3/chat-memory/clear": handleChatMemoryClear,
     "/v3/chat-memory/merge": handleChatMemoryMerge,
     "/v3/chat-memory/split-sessions": handleChatMemorySplit,
+    "/v3/chat-memory/rebuild": handleChatMemoryRebuild,
   };
 }
 
-export { handleChatMemoryClear, handleChatMemoryMerge, handleChatMemorySplit };
+export { handleChatMemoryClear, handleChatMemoryMerge, handleChatMemorySplit, handleChatMemoryRebuild };

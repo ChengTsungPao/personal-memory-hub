@@ -260,6 +260,9 @@ export interface V2RouterDeps {
    */
   notifyPipeline?: (instanceId: string, sessionId: string, messageCount: number, teamId?: string, agentId?: string) => Promise<void>;
 
+  /** Queue an L2 run (then L3) for a profile key now; used by `/v3/chat-memory/rebuild`. */
+  enqueueL2?: (instanceId: string, sessionKey: string, teamId?: string, agentId?: string) => Promise<void>;
+
   /** Quota manager for memory/credit limit checks and usage reporting (service mode). */
   quotaManager?: import("../core/quota/quota-manager.js").QuotaManager;
 

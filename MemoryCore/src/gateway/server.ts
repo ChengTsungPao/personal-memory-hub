@@ -1060,6 +1060,8 @@ export class TdaiGateway {
           ) => {
             await pipelineManager.notifyConversation(sessionId, [], instanceId, rounds, teamId, agentId);
           };
+          v2Deps.enqueueL2 = (instanceId, sessionKey, teamId, agentId) =>
+            pipelineManager.enqueueL2(sessionKey, instanceId, teamId, agentId);
         }
 
         // Inject QuotaManager for memory/credit limit checks
