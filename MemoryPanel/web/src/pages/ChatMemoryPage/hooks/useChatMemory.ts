@@ -31,11 +31,12 @@ function readBlockOrder(key: string): string[] {
   }
 }
 
-function writeBlockOrder(key: string, ids: string[]) {
+function clearBlockOrder(key: string) {
+  if (!key) return;
   try {
-    localStorage.setItem(key, JSON.stringify(ids));
+    localStorage.removeItem(key);
   } catch {
-    /* private mode / storage full: the order just is not remembered */
+    /* ignore */
   }
 }
 
@@ -127,7 +128,7 @@ export function useChatMemory(props: { activeTeamId?: string | null } = {}) {
       setBlocks([]);
     }
     try {
-      let res: { items: ChatMemoryBlock[]; total?: number };
+      let res: { items: ChatMemoryBlock[]; total?: number; has_custom_order?: boolean };
       if (scopeTab === 'fixed') {
         res = await chatMemoryApi.agentFixed(agentFilter);
       } else {
@@ -137,7 +138,7 @@ export function useChatMemory(props: { activeTeamId?: string | null } = {}) {
       // A repo agent's or New-chat's own built-in block stays empty: its memory lives in the
       // session blocks bound to it. Listing it only showed a block that cannot be removed.
       const ownBlock = scopeTab === 'fixed' ? `chat_memory-${activeTeamId}-${agentFilter}` : '';
-      const mapped: MemoryBlock[] = res.items.filter((b) => b.id !== ownBlock).map((b) => ({
+      let mapped: MemoryBlock[] = res.items.filter((b) => b.id !== ownBlock).map((b) => ({
         id: b.id,
         title: blockDisplayName(b.title),
         summary: b.summary ?? '',
@@ -156,6 +157,28 @@ export function useChatMemory(props: { activeTeamId?: string | null } = {}) {
         // 避免选中一个块就顺带把其余 3 层各 ping 一次（纯预请求用户还没看的东西）。
         layerCounts: buildInitialLayerCounts(b.layer_counts),
       }));
+      if (scopeTab === 'fixed' && agentFilter) {
+        const orderKey = `memory-hub.block-order.${activeTeamId}.${agentFilter}`;
+        const legacyOrder = readBlockOrder(orderKey);
+        if (res.has_custom_order) {
+          if (legacyOrder.length > 0) clearBlockOrder(orderKey);
+        } else if (legacyOrder.length > 0) {
+          const rank = new Map(legacyOrder.map((id, i) => [id, i]));
+          const placed = mapped
+            .filter((b) => rank.has(b.id))
+            .sort((a, b) => rank.get(a.id)! - rank.get(b.id)!);
+          mapped = [...mapped.filter((b) => !rank.has(b.id)), ...placed];
+          void chatMemoryApi
+            .reorderBlocks(
+              agentFilter,
+              mapped.map((b) => b.id),
+            )
+            .then(() => clearBlockOrder(orderKey))
+            .catch(() => {
+              /* keep localStorage for next retry */
+            });
+        }
+      }
       setBlocks(mapped);
     } catch (e: unknown) {
       if (seq !== fetchSeqRef.current) return;
@@ -495,33 +518,33 @@ export function useChatMemory(props: { activeTeamId?: string | null } = {}) {
   );
 
   // ── 过滤与辅助 ──
-  // The order the user gave the blocks of the selected agent (kept in this browser, per agent).
-  // Blocks with no saved place (new ones) come first.
-  const [orderVersion, setOrderVersion] = useState(0);
-  const orderKey = activeTeamId && agentFilter ? `memory-hub.block-order.${activeTeamId}.${agentFilter}` : '';
+  // Block order is persisted in the agent's server-side metadata (`block_order`) and applied by
+  // `/chat-memory/agent-fixed` (with one-time migration from browser localStorage in fetchBlocks).
   const filtered = useMemo(() => {
     if (scopeTab !== 'fixed') return blocks;
     if (!agentFilter) return [];
-    const list = blocks.filter((b) => b.agent_id === agentFilter);
-    const saved = readBlockOrder(orderKey);
-    if (saved.length === 0) return list;
-    const rank = new Map(saved.map((id, i) => [id, i]));
-    const placed = list
-      .filter((b) => rank.has(b.id))
-      .sort((a, b) => rank.get(a.id)! - rank.get(b.id)!);
-    return [...list.filter((b) => !rank.has(b.id)), ...placed];
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [blocks, scopeTab, agentFilter, orderKey, orderVersion]);
+    return blocks.filter((b) => b.agent_id === agentFilter);
+  }, [blocks, scopeTab, agentFilter]);
 
-  /** Moves a block one place up (-1) or down (+1) in the list and remembers the order. */
+  /** Moves a block one place up (-1) or down (+1) in the list and persists the order to server metadata. */
   function moveBlock(id: string, delta: -1 | 1) {
+    if (!agentFilter) return;
     const ids = filtered.map((b) => b.id);
     const from = ids.indexOf(id);
     const to = from + delta;
-    if (from < 0 || to < 0 || to >= ids.length || !orderKey) return;
+    if (from < 0 || to < 0 || to >= ids.length) return;
     [ids[from], ids[to]] = [ids[to], ids[from]];
-    writeBlockOrder(orderKey, ids);
-    setOrderVersion((v) => v + 1);
+    const rank = new Map(ids.map((bid, i) => [bid, i]));
+    setBlocks((prev) => {
+      const agentBlocks = prev
+        .filter((b) => b.agent_id === agentFilter)
+        .sort((a, b) => (rank.get(a.id) ?? 0) - (rank.get(b.id) ?? 0));
+      const others = prev.filter((b) => b.agent_id !== agentFilter);
+      return [...others, ...agentBlocks];
+    });
+    void chatMemoryApi.reorderBlocks(agentFilter, ids).catch((e: unknown) => {
+      tea.notify.error((e instanceof Error ? e.message : String(e)) || t('memory.notify.loadFailed'));
+    });
   }
 
   function agentLabel(id?: string): string {

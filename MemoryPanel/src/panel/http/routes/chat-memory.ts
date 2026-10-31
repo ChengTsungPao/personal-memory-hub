@@ -328,9 +328,21 @@ export function registerChatMemoryRoutes(api: Hono, deps: PanelDeps): void {
           };
         }),
       );
+      const aMeta = agentMeta(agent);
+      const savedOrder = Array.isArray(aMeta.block_order)
+        ? aMeta.block_order.filter((v: unknown): v is string => typeof v === "string")
+        : [];
+      let sorted = out;
+      if (savedOrder.length > 0) {
+        const rank = new Map(savedOrder.map((id, i) => [id, i]));
+        const placed = out
+          .filter((b) => rank.has(b.id))
+          .sort((a, b) => rank.get(a.id)! - rank.get(b.id)!);
+        sorted = [...out.filter((b) => !rank.has(b.id)), ...placed];
+      }
       return respondEnvelope(
         c,
-        okEnvelope(c, { items: out, total: out.length }),
+        okEnvelope(c, { items: sorted, total: sorted.length, has_custom_order: savedOrder.length > 0 }),
       );
     },
   );
@@ -1628,6 +1640,49 @@ export function registerChatMemoryRoutes(api: Hono, deps: PanelDeps): void {
       );
       if (env.code !== 0) return respondEnvelope(c, env);
       return respondEnvelope(c, okEnvelope(c, { block_id: blockId, repos }));
+    },
+  );
+
+  // POST /chat-memory/reorder-blocks   body: { agent_id, block_ids: string[] }
+  //
+  // Persists the display order of memory blocks under an owned agent in `metadata_json.block_order`.
+  api.post(
+    "/chat-memory/reorder-blocks",
+    validatePanelMetaHeaders(deps),
+    async (c) => {
+      const ctx = buildCtx(c);
+      const body = await readJson(c);
+      const agentId = typeof body?.agent_id === "string" ? body.agent_id.trim() : "";
+      if (!agentId) return respondControlError(c, 400, "MISSING_AGENT_ID");
+      const blockIds = Array.isArray(body?.block_ids)
+        ? [...new Set(body.block_ids.filter((v: unknown): v is string => typeof v === "string" && v.trim().length > 0))]
+        : null;
+      if (!blockIds) return respondControlError(c, 400, "MISSING_BLOCK_IDS");
+
+      const meUserId = await resolveCallerUserId(deps, ctx);
+      if (!meUserId) return respondControlError(c, 401, "INVALID_USER_KEY");
+
+      const agentEnv = await deps.metaKernel.invoke("agent/get", { agent_id: agentId }, ctx);
+      if (agentEnv.code === 404 || (agentEnv.code === 0 && !agentEnv.data)) {
+        return respondControlError(c, 404, "AGENT_NOT_FOUND");
+      }
+      if (agentEnv.code !== 0) return respondEnvelope(c, agentEnv);
+      const agent = agentEnv.data as AgentRaw;
+      if (agent.owner_user_id !== meUserId) {
+        return respondControlError(c, 403, "NOT_YOUR_AGENT");
+      }
+
+      const meta = agentMeta(agent);
+      const updateEnv = await deps.metaKernel.invoke(
+        "agent/update",
+        {
+          agent_id: agentId,
+          metadata_json: JSON.stringify({ ...meta, block_order: blockIds }),
+        },
+        ctx,
+      );
+      if (updateEnv.code !== 0) return respondEnvelope(c, updateEnv);
+      return respondEnvelope(c, okEnvelope(c, { agent_id: agentId, block_ids: blockIds }));
     },
   );
 
