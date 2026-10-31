@@ -219,6 +219,11 @@ YAML
 CORE_DATA_DIR="$(resolve_data_dir MEMORY_CORE_DATA_DIR "$HOME/.personal-memory-hub/core-data")"
 info "memory-core 数据目录（宿主机，唯一来源）= $CORE_DATA_DIR"
 info "启动 memory-core (image=$MEMORY_CORE_IMAGE, port=$MEMORY_CORE_PORT)"
+# 选用：L1 scavenger 的执行间隔（毫秒，默认 30 分钟）。只在设置时才传，空值会被当成 0 而停用 scavenger。
+SCAVENGER_ENV_ARGS=()
+if [[ -n "${MEMORY_SCAVENGER_INTERVAL_MS:-}" ]]; then
+  SCAVENGER_ENV_ARGS+=( -e "TDAI_SCAVENGER_INTERVAL_MS=$MEMORY_SCAVENGER_INTERVAL_MS" )
+fi
 $DOCKER run -d --name "$CONTAINER" --restart unless-stopped \
   --network "$NETWORK" \
   --network-alias memory-core \
@@ -233,6 +238,7 @@ $DOCKER run -d --name "$CONTAINER" --restart unless-stopped \
   -e STORE_MODE="$MEMORY_CORE_STORE_MODE" \
   -e TDAI_LLM_ASYNC_JOBS="${MEMORY_LLM_ASYNC_JOBS:-false}" \
   ${MONGO_ENV_ARGS[@]+"${MONGO_ENV_ARGS[@]}"} \
+  ${SCAVENGER_ENV_ARGS[@]+"${SCAVENGER_ENV_ARGS[@]}"} \
   "$MEMORY_CORE_IMAGE" >/dev/null
 
 wait_healthy "$CONTAINER" 90
