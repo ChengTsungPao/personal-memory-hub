@@ -2,12 +2,11 @@ import { mkdtemp } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import type { IMemoryStore, L0SessionGroup, L1RecordRow } from "../store/types.js";
+import type { IMemoryStore, L0SessionGroup } from "../store/types.js";
 import {
-  groupWindow,
-  isWindowCovered,
   loadScavengerState,
   nextWindow,
+  planGapChunks,
   saveScavengerState,
   type ScavengerWindowMessage,
 } from "./l1-scavenger.js";
@@ -19,13 +18,7 @@ function msg(i: number, recordedAtMs = i * 1000, sessionId = "s1"): ScavengerWin
   };
 }
 
-function l1(start: number, end: number, sessionId = "s1"): L1RecordRow {
-  return {
-    record_id: `r${start}`, content: "x", type: "episodic", priority: 50, scene_name: "", session_key: "k",
-    session_id: sessionId, team_id: "", task_id: "", user_id: "u", agent_id: "a", version: 1, timestamp_str: "",
-    timestamp_start: new Date(start).toISOString(), timestamp_end: new Date(end).toISOString(), created_time: "",
-  } as L1RecordRow;
-}
+const ids = (ms: ScavengerWindowMessage[]) => ms.map((m) => m.id);
 
 function fakeStore(messages: ScavengerWindowMessage[]): IMemoryStore {
   return {
@@ -46,19 +39,36 @@ describe("L1 scavenger helpers", () => {
     expect(second.map((m) => m.id)).toEqual(["m5"]);                     // m6 is past the cursor
   });
 
-  it("a window is covered when an L1 record of the session overlaps its conversation time", () => {
-    const w = [msg(1), msg(2), msg(3)];
-    const [start, end] = [w[0].timestamp, w[2].timestamp];
-    expect(isWindowCovered(w, [l1(start + 500, start + 600)])).toBe(true);
-    expect(isWindowCovered(w, [l1(end + 1000, end + 2000)])).toBe(false);
-    expect(isWindowCovered(w, [l1(start, end, "other-session")])).toBe(false);
-    expect(isWindowCovered(w, [])).toBe(false);
-    expect(isWindowCovered([], [])).toBe(true);
+  it("extracts only the messages no L1 log took, with the messages before them as background", () => {
+    const w = Array.from({ length: 9 }, (_, i) => msg(i + 1));
+    const chunks = planGapChunks(w, new Set(["m1", "m2", "m3", "m4", "m5", "m6", "m9"]), new Map());
+    expect(chunks.map((c) => [ids(c.background), ids(c.messages)])).toEqual([
+      [["m2", "m3", "m4", "m5", "m6"], ["m7", "m8"]],
+    ]);
   });
 
-  it("groups a window by user, agent and session like the L1 runner", () => {
-    const groups = groupWindow([msg(1), msg(2, 2000, "s2"), msg(3)]);
-    expect(groups.map((g) => [g.sessionId, g.messages.map((m) => m.id)])).toEqual([["s1", ["m1", "m3"]], ["s2", ["m2"]]]);
+  it("cuts a long gap into chunks of 10, each with the 5 messages before it", () => {
+    const w = Array.from({ length: 23 }, (_, i) => msg(i + 1));
+    const chunks = planGapChunks(w, new Set(["m1", "m2"]), new Map());
+    expect(chunks.map((c) => [ids(c.background), ids(c.messages)])).toEqual([
+      [["m1", "m2"], ids(w.slice(2, 12))],
+      [ids(w.slice(7, 12)), ids(w.slice(12, 22))],
+      [ids(w.slice(17, 22)), ["m23"]],
+    ]);
+  });
+
+  it("treats copies of one message as one, extracted if any copy was", () => {
+    const copy = (m: ScavengerWindowMessage, id: string) => ({ ...m, id });
+    const w = [msg(1), copy(msg(1), "m1b"), msg(2), copy(msg(2), "m2b"), copy(msg(2), "m2c")];
+    const chunks = planGapChunks(w, new Set(["m1b"]), new Map());
+    expect(chunks.map((c) => [ids(c.background), ids(c.messages)])).toEqual([[["m1"], ["m2"]]]);
+  });
+
+  it("keeps sessions apart and carries background into the next window", () => {
+    const context = new Map<string, ScavengerWindowMessage[]>();
+    expect(planGapChunks([msg(1), msg(2, 2000, "s2")], new Set(["m1"]), context)
+      .map((c) => [c.sessionId, ids(c.background), ids(c.messages)])).toEqual([["s2", [], ["m2"]]]);
+    expect(planGapChunks([msg(3)], new Set(), context).map((c) => ids(c.background))).toEqual([["m1"]]);
   });
 
   it("keeps its progress across runs", async () => {

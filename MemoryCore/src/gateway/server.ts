@@ -2831,7 +2831,7 @@ export class TdaiGateway {
    */
   /**
    * Async job mode: every TDAI_SCAVENGER_INTERVAL_MS (default 30 min, first run after 5 min) look for
-   * conversation below the L1 cursors that no L1 memory covers and re-extract it at `idle_only` priority
+   * conversation below the L1 cursors that no L1 extraction took as input and re-extract it at `idle_only` priority
    * (core/record/l1-scavenger.ts). One run at a time; a failed run simply stops and resumes next time.
    */
   private startL1Scavenger(instanceId: string): void {

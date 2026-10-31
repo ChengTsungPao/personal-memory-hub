@@ -3,17 +3,21 @@
  *
  * Before the async job queue, an L1 call that timed out was reported as an empty success and the
  * session's cursor moved past it, so that stretch of conversation was never extracted. The scavenger
- * walks each session's L0 history up to its L1 cursor in small windows. A window that no L1 memory
- * covers (no L1 record of the session whose conversation time overlaps it) is extracted again with
- * priority `idle_only` — the LLM gateway runs it only when nothing else needs the GPU — and its memories
- * are written like any L1 result. The session's L1 cursor is never touched.
+ * walks each session's L0 history up to its L1 cursor in small windows. A message is extracted when an
+ * L1 generation log lists it as a new message (`input_refs`); copies of one message (same session,
+ * role, text and recorded_at) count as one. The messages no log lists are extracted again in chunks of
+ * at most 10, each with up to 5 earlier messages as background, with priority `idle_only` — the LLM
+ * gateway runs it only when nothing else needs the GPU — and the memories go through the normal L1
+ * dedup like any L1 result. The session's L1 cursor is never touched.
  *
  * Its own progress (`scavenged_until` per session) is kept in `.metadata/l1-scavenger.json`, so every
- * window is looked at once: a window that legitimately yields no memories is not retried forever.
+ * window is looked at once: a chunk that legitimately yields no memories (and so writes no log) is not
+ * retried forever.
  */
 
-import type { IMemoryStore, L1RecordRow } from "../store/types.js";
+import type { IMemoryStore } from "../store/types.js";
 import type { StorageAdapter } from "../storage/adapter.js";
+import { shouldExtractL1 } from "../../utils/sanitize.js";
 
 export const SCAVENGER_STATE_PATH = ".metadata/l1-scavenger.json";
 
@@ -100,44 +104,65 @@ export async function nextWindow(
   return flat.slice(0, end);
 }
 
-function toMs(value: string | number | undefined): number {
-  if (value === undefined || value === "") return NaN;
-  if (typeof value === "number") return value;
-  const asNumber = Number(value);
-  return Number.isFinite(asNumber) && /^\d+$/.test(value) ? asNumber : Date.parse(value);
+/** One extraction to run: `messages` are extracted, `background` is context only. */
+export interface ScavengerChunk {
+  sessionId: string;
+  teamId?: string;
+  taskId?: string;
+  userId: string;
+  agentId: string;
+  background: ScavengerWindowMessage[];
+  messages: ScavengerWindowMessage[];
 }
 
-/** Does an L1 record of this session cover any part of the window's conversation time? */
-export function isWindowCovered(window: ScavengerWindowMessage[], l1: L1RecordRow[]): boolean {
-  if (window.length === 0) return true;
-  const start = Math.min(...window.map((m) => m.timestamp));
-  const end = Math.max(...window.map((m) => m.timestamp));
-  const sessions = new Set(window.map((m) => m.sessionId));
-  return l1.some((r) => {
-    if (r.session_id && !sessions.has(r.session_id)) return false;
-    const rs = toMs(r.timestamp_start || r.timestamp_str);
-    const re = toMs(r.timestamp_end || r.timestamp_start || r.timestamp_str);
-    if (!Number.isFinite(rs) && !Number.isFinite(re)) return false;
-    const lo = Number.isFinite(rs) ? rs : re;
-    const hi = Number.isFinite(re) ? re : rs;
-    return lo <= end && hi >= start;
-  });
-}
+const CHUNK_SIZE = 10;
+const BACKGROUND_SIZE = 5;
 
-/** Split a window by the same isolation tuple the L1 runner uses. */
-export function groupWindow(window: ScavengerWindowMessage[]): Array<{
-  sessionId: string; teamId?: string; taskId?: string; userId: string; agentId: string;
-  messages: Array<{ id: string; role: "user" | "assistant"; content: string; timestamp: number }>;
-}> {
-  const map = new Map<string, ReturnType<typeof groupWindow>[number]>();
-  for (const m of window) {
-    const key = `${m.userId}\u0000${m.agentId}\u0000${m.sessionId}`;
-    let g = map.get(key);
-    if (!g) {
-      g = { sessionId: m.sessionId, teamId: m.teamId, taskId: m.taskId, userId: m.userId, agentId: m.agentId, messages: [] };
-      map.set(key, g);
+/**
+ * Plan the extractions for one window. Per isolation tuple (user, agent, session — like the L1 runner),
+ * copies of a message collapse into one; a message any copy of which is in `extracted` is context, and
+ * each run of the others is cut into chunks of at most 10, each carrying the 5 messages before it as
+ * background. `context` holds those last messages per tuple across windows of one session (updated in
+ * place). Messages the L1 quality gate drops are skipped, so the extractor sees exactly these counts.
+ */
+export function planGapChunks(
+  window: ScavengerWindowMessage[],
+  extracted: ReadonlySet<string>,
+  context: Map<string, ScavengerWindowMessage[]>,
+): ScavengerChunk[] {
+  const keyOf = (m: ScavengerWindowMessage) => `${m.userId}\u0000${m.agentId}\u0000${m.sessionId}`;
+  const sig = (m: ScavengerWindowMessage) => `${keyOf(m)}\u0000${m.recordedAtMs}\u0000${m.role}\u0000${m.content}`;
+  const done = new Set(window.filter((m) => extracted.has(m.id)).map(sig));
+  const chunks: ScavengerChunk[] = [];
+  const runs = new Map<string, ScavengerWindowMessage[]>();
+  const seen = new Set<string>();
+  const flush = (key: string, m: ScavengerWindowMessage) => {
+    const run = runs.get(key) ?? [];
+    for (let i = 0; i < run.length; i += CHUNK_SIZE) {
+      const history = context.get(key) ?? [];
+      const messages = run.slice(i, i + CHUNK_SIZE);
+      chunks.push({
+        sessionId: m.sessionId, teamId: m.teamId, taskId: m.taskId, userId: m.userId, agentId: m.agentId,
+        background: history.slice(-BACKGROUND_SIZE), messages,
+      });
+      context.set(key, [...history, ...messages].slice(-BACKGROUND_SIZE));
     }
-    g.messages.push({ id: m.id, role: m.role as "user" | "assistant", content: m.content, timestamp: m.timestamp });
+    runs.set(key, []);
+  };
+  for (const m of window) {
+    const key = keyOf(m);
+    const s = sig(m);
+    if (seen.has(s) || !shouldExtractL1(m.content)) continue;
+    seen.add(s);
+    if (done.has(s)) {
+      flush(key, m);
+      context.set(key, [...(context.get(key) ?? []), m].slice(-BACKGROUND_SIZE));
+    } else {
+      runs.set(key, [...(runs.get(key) ?? []), m]);
+    }
   }
-  return [...map.values()];
+  for (const m of window) {
+    if (runs.get(keyOf(m))?.length) flush(keyOf(m), m);
+  }
+  return chunks;
 }
