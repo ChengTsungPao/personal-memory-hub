@@ -125,17 +125,26 @@ Available directly inside **Claude Code**, **Antigravity**, and **Codex**:
 
 All backend data/control APIs use JSON `POST` requests with the unified response envelope `{ code, message, request_id, data }` and `x-tdai-service-id: default`.
 
-#### A. MemoryCore Gateway (`http://localhost:8420/v3/*`)
-Full specification: [`MemoryCore/v3-api-memorycore-doc.md`](./MemoryCore/v3-api-memorycore-doc.md)
+#### A. MemoryCore Gateway (`http://localhost:8420`)
+Full specification of the upstream endpoints: [`MemoryCore/v3-api-memorycore-doc.md`](./MemoryCore/v3-api-memorycore-doc.md). The route tables live in `MemoryCore/src/gateway/` (`v2-router.ts`, `*-handlers.ts`) and `MemoryCore/src/metadata/router/v3-meta-schemas.ts`.
 
 | Domain | Endpoints | Purpose |
 | :--- | :--- | :--- |
-| **L0 Conversation** | `/v3/conversation/add`<br/>`/v3/conversation/search`<br/>`/v3/conversation/list` | Append raw session turns (triggers async L1–L3 pipeline) and search raw conversation history. |
-| **L1 Atomic Memory** | `/v3/atomic/search`<br/>`/v3/atomic/query`<br/>`/v3/atomic/delete` | Hybrid semantic + BM25 search and structured filtering over extracted atomic facts. |
-| **L2 Scenario** | `/v3/scenario/ls`<br/>`/v3/scenario/read`<br/>`/v3/scenario/write`<br/>`/v3/scenario/rm` | Browse, read, and curate project/topic scenario Markdown files. |
-| **L3 Core Persona** | `/v3/core/read`<br/>`/v3/core/write` | Read or overwrite the synthesized long-term persona / operating doctrine. |
-| **Skills** | `/v3/skill/list`<br/>`/v3/skill/search`<br/>`/v3/skill/upload`<br/>`/v3/skill/download` | Manage and search reusable agent skills extracted from trajectories or uploaded as ZIP packages. |
-| **Metadata & ACL** | `/v3/meta/team/*`<br/>`/v3/meta/agent/*`<br/>`/v3/meta/user/*`<br/>`/v3/meta/asset/*`<br/>`/v3/meta/binding/*` | Multi-tenant team, user, agent registration, asset ownership, and fixed/team-pool asset bindings. |
+| **L0 Conversation** | `/v3/conversation/{add,query,search,delete,count}` | Append raw session turns (each `add` counts toward the L1 trigger: 15 user turns or 30 min idle) and query / search / delete raw history. |
+| **L1 Atomic Memory** | `/v3/atomic/{query,search,update,delete,count}` | Structured filtering, hybrid vector + BM25 search and edits over extracted atomic memories. |
+| **L2 Scenario** | `/v3/scenario/{ls,read,write,rm,count}` | Browse, read and curate scene blocks (Markdown). |
+| **L3 Core Persona** | `/v3/core/{read,write,count}` | Read or overwrite the persona document. |
+| **Chat memory blocks** *(Memory Hub)* | `/v3/chat-memory/clear`<br/>`/v3/chat-memory/merge`<br/>`/v3/chat-memory/split-sessions`<br/>`/v3/chat-memory/rebuild` | `clear`: delete a block's L0–L3 content, keep the block. `merge`: move one session block's L0/L1 into another and remove it. `split-sessions`: move an old per-project block's L0/L1 into one block per session (idempotent). `rebuild`: queue L2, then L3, for every session of a block from its existing L1 (`dry_run` lists the sessions); it does **not** re-run L1. |
+| **Pipeline status** | `/v2/pipeline/status`<br/>`/v2/pipeline/l1-status` *(Memory Hub)* | Queued / running pipeline tasks; L1 slices still pending or failed at the LLM gateway (async job mode). |
+| **Memory prompts & generation logs** | `/v3/memory-prompt/{create,get,update,delete,set,setting/list,log}`<br/>`/v3/memory-generation-log/{list,get}` | Custom L1/L2/L3 prompts per team/agent; per-run logs of what each L1/L2/L3 generation read (`input_refs`) and wrote (`output_refs`). |
+| **Skills** | `/v3/skill/{create,update,patch,delete,get,get-by-name,list,search,versions,export,listing,extract}`<br/>`/v3/skill/files/{read,write,remove}`<br/>`/v3/skill/conversation/{add,force-archive}` | Manage, search and extract reusable agent skills. |
+| **Knowledge metadata** | `/v3/knowledge/{create,get,update,delete,list}` | Metadata records (name, summary) for knowledge bases; the content itself is in MemoryKnowledge. |
+| **Metadata & ACL** | `/v3/meta/{user,team,agent,task,asset}/*`<br/>`/v3/meta/{user-key,team-member,task-agent,participation-log,acl}/*`<br/>`/v3/meta/agent-fixed-asset/{set,add,remove,list,list-with-detail,bindings-of-asset,summary-by-agents}`<br/>`/v3/meta/{auth/verify,instance-quota/get,config/user/*,instance-upstream/*}` | Users, keys, teams, agents, tasks, assets and ACL. A chat memory block is an asset bound to an agent; `agent-fixed-asset/add`, `remove` and `bindings-of-asset` *(Memory Hub)* bind a session's block to the repo agents it worked in. |
+| **Ops** | `GET /health`<br/>`/v3/analytics/*`<br/>`/v3/instance/destroy` (also `/v2/`) | Health check, usage analytics, instance teardown (admin API key). |
+
+Deprecated: `/v2/{team,user,agent,task}/*` (use `/v3/meta/*`); the L0–L3 data-plane routes above (except `count`) are also mounted under `/v2/*`.
+
+Background work with no API: the **L1 scavenger** (every `TDAI_SCAVENGER_INTERVAL_MS`, default 30 min) re-extracts, at `idle_only` priority, the L0 messages behind each L1 cursor that no L1 generation log lists as input — conversation an L1 run passed over. Its progress is in `core-data/.metadata/l1-scavenger.json`; deleting a session's entry makes it re-scan that session.
 
 #### B. MemoryKnowledge Service (`http://localhost:8424/v3/*`)
 Full specification: [`MemoryKnowledge/v3-api-memoryknowledge-doc.md`](./MemoryKnowledge/v3-api-memoryknowledge-doc.md) · Swagger UI: `http://localhost:8424/docs`
@@ -153,7 +162,15 @@ Full specification: [`MemoryKnowledge/v3-api-memoryknowledge-doc.md`](./MemoryKn
 Full specification: [`MemoryPanel/panel-api-doc.md`](./MemoryPanel/panel-api-doc.md)
 
 - **Web Console (`http://localhost:8125`)**: Mobile- and desktop-friendly UI for browsing Chat Memory (`L0`–`L3`), Team Wiki knowledge graphs & Markdown pages, CodeGraph repositories, Skills, Team/Agent management, and External Knowledge Connectors (Notion).
-- **Panel BFF (`/api/knowledge/*`, `/api/memory/*`, `/api/team/*`)**: Handles session authentication, team-level access control (`requireKnowledgeRead` / `requireKnowledgeWrite`), and lazy asset registration between `MemoryKnowledge` and `MemoryCore`.
+- **Panel BFF (`/api/v1/*`)**: Handles session authentication, team-level access control (`requireKnowledgeRead` / `requireKnowledgeWrite`), and lazy asset registration between `MemoryKnowledge` and `MemoryCore`. Routes live in `MemoryPanel/src/panel/http/routes/`:
+
+| Group | Endpoints | Purpose |
+| :--- | :--- | :--- |
+| **Auth** | `/api/v1/auth/{methods,session,logout}`<br/>`/api/v1/auth/user-key/{preview,login}`<br/>`/api/v1/auth/idp/woa/*` | Log in with a user key (or IdP), read / end the session. |
+| **Chat memory** | `/api/v1/chat-memory/{mine,create,import,unbind,layer,clear,l1-status,search}` | Blocks visible to the user, create / import / unbind blocks, read one layer (L0–L3), clear, L1 extraction status, search. Forwards to MemoryCore after checking ownership. |
+| **Agents** | `/api/v1/agent/delete-cascade`<br/>`/api/v1/agent-overview/bootstrap` | Delete an agent with its assets; first-load data for the agent overview. |
+| **Knowledge** | `/api/v1/knowledge/wiki/*`<br/>`/api/v1/knowledge/code-graph/*`<br/>`/api/v1/knowledge/connectors/*`<br/>`/api/v1/knowledge/{allocate,unbind,agent-fixed,set-visibility,grant,status-callback}` | Wiki, CodeGraph and connector operations forwarded to MemoryKnowledge, plus asset allocation and sharing. |
+| **Proxies** | `/api/v1/meta/*` · `/api/v1/skill/*` · `/api/v1/analytics/*` · `GET /api/v1/meta/instances` · `GET /api/v1/health` | Pass-through to MemoryCore's `/v3/meta/*`, `/v3/skill/*`, `/v3/analytics/*`. |
 
 ---
 
