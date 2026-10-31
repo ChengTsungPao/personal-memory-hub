@@ -24,6 +24,7 @@ import { CheckpointManager } from "./checkpoint.js";
 import type { PipelineSessionState } from "./checkpoint.js";
 import { createStoreBundle } from "../core/store/factory.js";
 import type { IMemoryStore } from "../core/store/types.js";
+import type { ScavengerWindowMessage } from "../core/record/l1-scavenger.js";
 import { memoryPromptResolveKey, resolveMemoryPrompts } from "../core/memory-prompt/resolver.js";
 import {
   buildGenerationLogIdentity,
@@ -686,9 +687,10 @@ export interface L1ScavengeResult {
 }
 
 /**
- * Walk each session's L0 history up to its L1 cursor and extract the windows no L1 memory covers,
- * as `idle_only` jobs (the LLM gateway runs them only when the GPU is otherwise idle). Never moves
- * an L1 cursor. `maxExtractions` bounds the LLM work of one run.
+ * Walk each session's L0 history up to its L1 cursor and extract the messages no L1 generation log
+ * lists as input, in chunks of at most 10 (see planGapChunks), as `idle_only` jobs (the LLM gateway
+ * runs them only when the GPU is otherwise idle). Never moves an L1 cursor. `maxExtractions` bounds
+ * the chunks one run extracts.
  */
 export function createL1Scavenger(opts: {
   pluginDataDir: string;
@@ -708,19 +710,24 @@ export function createL1Scavenger(opts: {
 
   return async () => {
     const {
-      groupWindow, isWindowCovered, loadScavengerState, nextWindow, saveScavengerState,
+      loadScavengerState, nextWindow, planGapChunks, saveScavengerState,
     } = await import("../core/record/l1-scavenger.js");
     const result: L1ScavengeResult = { windowsChecked: 0, gapsExtracted: 0, stored: 0 };
     if (vectorStore.isDegraded()) return result;
 
     const cp = await new CheckpointManager(pluginDataDir, logger, storage).read();
     const state = await loadScavengerState(pluginDataDir, storage);
+    // Same log location the extractor writes to (see extractL1Memories).
+    const extracted = await new MemoryGenerationLogStore(
+      storage ?? new StorageAdapter(new LocalStorageBackend(pluginDataDir)),
+      getInstanceId?.() ?? "standalone",
+    ).listL1InputL0Ids();
     try {
       for (const [sessionKey, runner] of Object.entries(cp.runner_states ?? {})) {
         const cursor = runner.last_l1_cursor ?? 0;
         let from = state.sessions[sessionKey]?.scavenged_until ?? 0;
         if (cursor <= 0 || from >= cursor) continue;
-        let l1: Awaited<ReturnType<IMemoryStore["queryL1Records"]>> | undefined;
+        const context = new Map<string, ScavengerWindowMessage[]>();
 
         while (from < cursor) {
           const window = await nextWindow(vectorStore, sessionKey, from, cursor, windowSize);
@@ -730,45 +737,50 @@ export function createL1Scavenger(opts: {
           }
           const windowEnd = window[window.length - 1].recordedAtMs;
           result.windowsChecked += 1;
-          l1 ??= await vectorStore.queryL1Records({ sessionKey });
-          if (!isWindowCovered(window, l1)) {
+          const chunks = planGapChunks(window, extracted, context);
+          if (chunks.length > 0) {
             if (result.gapsExtracted >= maxExtractions) return result;     // enough LLM work for this run
-            const groups = groupWindow(window);
-            const prompts = await resolveMemoryPrompts(vectorStore, groups.map((g) => ({
-              teamId: g.teamId, agentId: g.agentId, layer: "l1" as const,
+            const prompts = await resolveMemoryPrompts(vectorStore, chunks.map((c) => ({
+              teamId: c.teamId, agentId: c.agentId, layer: "l1" as const,
             })));
-            for (const g of groups) {
+            for (const c of chunks) {
+              const first = c.messages[0].recordedAtMs;
+              const last = c.messages[c.messages.length - 1].recordedAtMs;
               const r = await extractL1Memories({
-                messages: g.messages,
+                messages: [...c.background, ...c.messages].map((m) => ({
+                  id: m.id, role: m.role as "user" | "assistant", content: m.content, timestamp: m.timestamp,
+                })),
                 sessionKey,
-                sessionId: g.sessionId,
-                taskId: g.taskId,
-                teamId: g.teamId,
-                userId: g.userId,
-                agentId: g.agentId,
+                sessionId: c.sessionId,
+                taskId: c.taskId,
+                teamId: c.teamId,
+                userId: c.userId,
+                agentId: c.agentId,
                 baseDir: pluginDataDir,
                 config: undefined,
                 options: {
+                  maxMessagesPerExtraction: c.messages.length,
+                  maxBackgroundMessages: c.background.length,
                   enableDedup: cfg.extraction.enableDedup,
                   maxMemoriesPerSession: cfg.extraction.maxMemoriesPerSession,
                   model: cfg.extraction.model,
                   promptMode: cfg.extraction.promptMode,
-                  memoryPrompt: prompts.get(memoryPromptResolveKey({ teamId: g.teamId, agentId: g.agentId, layer: "l1" })),
+                  memoryPrompt: prompts.get(memoryPromptResolveKey({ teamId: c.teamId, agentId: c.agentId, layer: "l1" })),
                   vectorStore,
                   embeddingService,
                   conflictRecallTopK: cfg.embedding.conflictRecallTopK,
                   embeddingTimeoutMs: cfg.embedding.captureTimeoutMs ?? cfg.embedding.timeoutMs,
                   llmRunner,
-                  job: { priority: "idle_only", dedupKey: `L1S:${g.sessionId || sessionKey}:${from}_${windowEnd}` },
+                  job: { priority: "idle_only", dedupKey: `L1S:${c.sessionId || sessionKey}:${first}_${last}` },
                 },
                 logger,
                 instanceId: getInstanceId?.(),
                 storage,
               });
               result.stored += r.storedCount;
+              result.gapsExtracted += 1;
+              logger.info(`${TAG} [scavenger] ${sessionKey}: re-extracted ${c.messages.length} message(s) ${first}..${last}`);
             }
-            result.gapsExtracted += 1;
-            logger.info(`${TAG} [scavenger] ${sessionKey}: re-extracted ${from}..${windowEnd}`);
           }
           from = windowEnd;
           state.sessions[sessionKey] = { scavenged_until: from, last_run: new Date().toISOString() };

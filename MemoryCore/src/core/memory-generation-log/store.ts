@@ -136,6 +136,24 @@ export class MemoryGenerationLogStore {
     return this.getByKey(key);
   }
 
+  /** Every L0 record id that some L1 generation took as a new message (`input_refs`), across all L1 logs. */
+  async listL1InputL0Ids(): Promise<Set<string>> {
+    const ids = new Set<string>();
+    let marker: string | undefined;
+    do {
+      const result = await this.storage.getBackend().listObjects(`${ROOT}/layer=l1/`, { maxKeys: 1000, marker, recursive: true });
+      for (const entry of result.entries) {
+        if (entry.isDirectory || !parseListItem(entry.key, entry.size)) continue;
+        const log = await this.getByKey(entry.key);
+        for (const ref of log?.input_refs ?? []) {
+          if (ref.layer === "l0") ids.add(ref.record_id);
+        }
+      }
+      marker = result.nextMarker;
+    } while (marker);
+    return ids;
+  }
+
   async list(filter: MemoryGenerationLogListFilter): Promise<{ items: MemoryGenerationLogListItem[]; next_cursor?: string }> {
     const layers: MemoryGenerationLayer[] = filter.layer ? [filter.layer] : ["l1", "l2", "l3"];
     const items: MemoryGenerationLogListItem[] = [];
