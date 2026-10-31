@@ -101,7 +101,7 @@ export async function extractL1Memories(params: {
   baseDir: string;
   config: unknown;
   options?: {
-    /** Max new messages to send in one extraction call */
+    /** Max new messages to send in one extraction call (default: every message passed in) */
     maxMessagesPerExtraction?: number;
     /** Max background messages for context */
     maxBackgroundMessages?: number;
@@ -151,7 +151,6 @@ export async function extractL1Memories(params: {
 }): Promise<L1ExtractionResult> {
   const { messages, sessionKey, sessionId, taskId, teamId, userId, agentId, baseDir, config, logger, instanceId: metricInstanceId, storage } = params;
   const options = params.options ?? {};
-  const maxNewMessages = options.maxMessagesPerExtraction ?? 10;
   const maxBgMessages = options.maxBackgroundMessages ?? 5;
   const enableDedup = options.enableDedup ?? true;
   const maxMemoriesPerSession = options.maxMemoriesPerSession ?? 10;
@@ -179,7 +178,10 @@ export async function extractL1Memories(params: {
     return { success: true, extractedCount: 0, storedCount: 0, records: [], sceneNames: [] };
   }
 
-  // Split messages into background (older) + new (recent)
+  // Split messages into background (older) + new (recent). Callers pass exactly the rows whose cursor
+  // they advance (a runner batch can exceed 10 through same-ms alignment), so by default all are new;
+  // a fixed default here left the overflow as background that was never extracted.
+  const maxNewMessages = options.maxMessagesPerExtraction ?? qualifiedMessages.length;
   const newMessages = qualifiedMessages.slice(-maxNewMessages);
   const bgEndIdx = qualifiedMessages.length - newMessages.length;
   const backgroundMessages = bgEndIdx > 0

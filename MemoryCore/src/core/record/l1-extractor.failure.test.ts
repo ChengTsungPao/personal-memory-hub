@@ -35,4 +35,19 @@ describe("L1 extraction failures", () => {
     });
     expect(r).toMatchObject({ success: true, extractedCount: 0, storedCount: 0 });
   });
+
+  it("a batch longer than 10 messages is extracted in full, none left as background", async () => {
+    const batch = Array.from({ length: 13 }, (_, i) => ({
+      id: `b${i + 1}`, role: (i % 2 ? "assistant" : "user") as "user" | "assistant",
+      content: `Step ${i + 1} of the gateway rollout plan is documented in the runbook.`, timestamp: 1_700_000_000_000 + i * 1000,
+    }));
+    const llm = runner(new Error("stop after capturing the prompt"));
+    const dir = await mkdtemp(path.join(os.tmpdir(), "l1-"));
+    await expect(extractL1Memories({
+      messages: batch, sessionKey: "k", sessionId: "s1", baseDir: dir, config: undefined, options: { llmRunner: llm },
+    })).rejects.toBeInstanceOf(L1ExtractionError);
+    const [background, fresh] = llm.calls[0].prompt.split("【待提取的新消息】");
+    for (const m of batch) expect(fresh).toContain(`[${m.id}]`);
+    expect(background).not.toContain("[b1]");
+  });
 });
