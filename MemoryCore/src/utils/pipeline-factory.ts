@@ -81,11 +81,10 @@ const TAG = "[memory-tdai] [pipeline-factory]";
 // Constants live here because both the standalone runner (this file) and
 // the service-mode worker (gateway/server.ts) depend on the same
 // over-fetch-by-1x semantic to recognize backlog.
-// Aligned with l1-extractor's maxMessagesPerExtraction (default 10) so that
-// every L0 row in the batch is seen by the LLM as a "new" message.
-// Previous value of 20 caused the extractor's slice(-10) to silently
-// truncate the first 5 rows per batch. Trade-off: drain rounds double
-// under backlog, but zero data loss.
+// The extractor treats every row it is given as a "new" message, so a batch
+// stretched past 10 by same-ms alignment is still extracted in full.
+// (It used to keep only the last 10 as new, which dropped the overflow.)
+// 10 keeps each extraction prompt small; drain rounds double under backlog.
 export const L1_BATCH_PROCESS = 10;
 export const L1_BATCH_QUERY = L1_BATCH_PROCESS * 2;
 
