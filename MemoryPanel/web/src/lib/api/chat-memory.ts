@@ -93,7 +93,7 @@ export const chatMemoryApi = {
 
   /** Agent 固定资产 */
   agentFixed: (agentId: string) =>
-    chatMemoryCall<{ items: ChatMemoryBlock[]; total: number }>('agent-fixed', {
+    chatMemoryCall<{ items: ChatMemoryBlock[]; total: number; has_custom_order?: boolean }>('agent-fixed', {
       agent_id: agentId,
     }),
 
@@ -168,6 +168,13 @@ export const chatMemoryApi = {
     chatMemoryCall<{ block_id: string; repos: ChatMemoryRepo[] }>('set-repos', {
       block_id: blockId,
       repo_agent_ids: repoAgentIds,
+    }),
+
+  /** 保存 Agent 下记忆块的排列顺序到服务器 metadata（Owner-only） */
+  reorderBlocks: (agentId: string, blockIds: string[]) =>
+    chatMemoryCall<{ agent_id: string; block_ids: string[] }>('reorder-blocks', {
+      agent_id: agentId,
+      block_ids: blockIds,
     }),
 
   /** 手工建独立 UserAsset */
