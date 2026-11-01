@@ -89,6 +89,7 @@ rm_container_if_exists "$CONTAINER"
 # 内部 knowledge 通过 upstream memory 调 LLM 走 custom 模式，直接指向 MEMORY_LLM_*
 # LLM_MODE=custom → 不走 memory 的 LLM proxy，而是 knowledge 直连用户提供的端点
 PANEL_DATA_DIR_RESOLVED="$(resolve_data_dir PANEL_DATA_DIR "$HOME/.personal-memory-hub/panel-data")"
+BACKUP_STAGING_DIR="$(resolve_data_dir PMH_BACKUP_STAGING_DIR "$HOME/.personal-memory-hub/backup-staging")"
 info "memory-hub 数据目录（宿主机，唯一来源）= $PANEL_DATA_DIR_RESOLVED"
 
 WEB_DIST_MOUNT=()
@@ -105,12 +106,15 @@ $DOCKER run -d --name "$CONTAINER" --restart unless-stopped \
   -p "${PANEL_PORT}:8125" \
   -p "${KNOWLEDGE_PORT}:8424" \
   -v "${PANEL_DATA_DIR_RESOLVED}:/data/knowledge" \
+  -v "${BACKUP_STAGING_DIR}:/data/backup-staging" \
   ${WEB_DIST_MOUNT[@]+"${WEB_DIST_MOUNT[@]}"} \
+  -e TZ="${TZ:-Asia/Taipei}" \
   -e PANEL_PORT=8125 \
   -e KNOWLEDGE_PORT=8424 \
   -e KNOWLEDGE_PUBLIC_BASE_URL="$KNOWLEDGE_PUBLIC_BASE_URL" \
   -e KNOWLEDGE_SERVICE_KEY="$KNOWLEDGE_SERVICE_KEY" \
   -e KNOWLEDGE_AUTH_TOKEN="$KNOWLEDGE_SERVICE_KEY" \
+  -e PMH_BACKUP_STAGING_DIR=/data/backup-staging \
   -e REMOTE_INSTANCE_ID=default \
   -e REMOTE_INSTANCE_NAME=default \
   -e REMOTE_INSTANCE_URL="http://memory-core:8420" \

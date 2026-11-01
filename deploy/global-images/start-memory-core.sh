@@ -16,6 +16,9 @@ source "$SCRIPT_DIR/_lib.sh"
 load_env
 require_vars MEMORY_CORE_IMAGE MEMORY_CORE_PORT
 
+# 确保 Knowledge 服务间鉴权 key 存在（供备份引擎调用 Knowledge 内部快照接口）
+ensure_knowledge_service_key
+
 # ── Gateway 内部管理凭据 ─────────────────────────────────────────
 # 用 ${VAR-default}（不是 :-default）：允许 .env 里显式设为空字符串来关闭 Bearer gate。
 #
@@ -217,6 +220,38 @@ skill:
 YAML
 
 CORE_DATA_DIR="$(resolve_data_dir MEMORY_CORE_DATA_DIR "$HOME/.personal-memory-hub/core-data")"
+BACKUP_STAGING_DIR="$(resolve_data_dir PMH_BACKUP_STAGING_DIR "$HOME/.personal-memory-hub/backup-staging")"
+BACKUP_LOCAL_DIR="$(resolve_data_dir PMH_BACKUP_LOCAL_DIR "$HOME/.personal-memory-hub/backups")"
+
+# 确保宿主机 admin-key 文件提前存在，避免 docker -v 把不存在的文件创建成目录
+mkdir -p "$(dirname "$ADMIN_KEY_FILE")"
+[[ -f "$ADMIN_KEY_FILE" ]] || : > "$ADMIN_KEY_FILE"
+
+BACKUP_HOST_MOUNTS=(
+  -v "${BACKUP_STAGING_DIR}:/data/backup-staging"
+  -v "${BACKUP_LOCAL_DIR}:/data/tdai-memory/backups"
+  -v "$(to_docker_host_path "$ADMIN_KEY_FILE"):/data/host-config/admin-key:ro"
+)
+
+AGENTS_JSON_FILE="${MEMORY_CORE_AGENTS_FILE:-$HOME/.personal-memory-hub/agents.json}"
+if [[ -f "$AGENTS_JSON_FILE" ]]; then
+  BACKUP_HOST_MOUNTS+=( -v "$(to_docker_host_path "$AGENTS_JSON_FILE"):/data/host-config/agents.json:ro" )
+fi
+if [[ -f "$ENV_FILE" ]]; then
+  BACKUP_HOST_MOUNTS+=( -v "$(to_docker_host_path "$ENV_FILE"):/data/host-config/global.env:ro" )
+fi
+CLAUDE_PROXY_ENV_FILE="$SCRIPT_DIR/../claude-llm-proxy/.env"
+if [[ -f "$CLAUDE_PROXY_ENV_FILE" ]]; then
+  BACKUP_HOST_MOUNTS+=( -v "$(to_docker_host_path "$CLAUDE_PROXY_ENV_FILE"):/data/host-config/claude-proxy.env:ro" )
+fi
+LLM_GATEWAY_DIR="${LLM_GATEWAY_DIR:-/d/program/Github/llm-gateway}"
+if [[ -f "$LLM_GATEWAY_DIR/.env" ]]; then
+  BACKUP_HOST_MOUNTS+=( -v "$(to_docker_host_path "$LLM_GATEWAY_DIR/.env"):/data/host-config/llm-gateway.env:ro" )
+fi
+if [[ -f "$LLM_GATEWAY_DIR/config.json" ]]; then
+  BACKUP_HOST_MOUNTS+=( -v "$(to_docker_host_path "$LLM_GATEWAY_DIR/config.json"):/data/host-config/llm-gateway-config.json:ro" )
+fi
+
 info "memory-core 数据目录（宿主机，唯一来源）= $CORE_DATA_DIR"
 info "启动 memory-core (image=$MEMORY_CORE_IMAGE, port=$MEMORY_CORE_PORT)"
 # 选用：L1 scavenger 的执行间隔（毫秒，默认 30 分钟）。只在设置时才传，空值会被当成 0 而停用 scavenger。
@@ -231,12 +266,20 @@ $DOCKER run -d --name "$CONTAINER" --restart unless-stopped \
   -p "${MEMORY_CORE_PORT}:8420" \
   -v "${CORE_DATA_DIR}:/data/tdai-memory" \
   -v "$(to_docker_host_path "$CORE_CONFIG_FILE"):/data/config/tdai-gateway.yaml:ro" \
+  ${BACKUP_HOST_MOUNTS[@]+"${BACKUP_HOST_MOUNTS[@]}"} \
+  -e TZ="${TZ:-Asia/Taipei}" \
   -e TDAI_GATEWAY_PORT=8420 \
   -e TDAI_GATEWAY_HOST=0.0.0.0 \
   -e TDAI_GATEWAY_API_KEY="$MEMORY_CORE_GATEWAY_API_KEY" \
   -e TDAI_DATA_DIR=/data/tdai-memory \
   -e STORE_MODE="$MEMORY_CORE_STORE_MODE" \
   -e TDAI_LLM_ASYNC_JOBS="${MEMORY_LLM_ASYNC_JOBS:-false}" \
+  -e PMH_BACKUP_STAGING_DIR=/data/backup-staging \
+  -e PMH_BACKUP_LOCAL_DIR=/data/tdai-memory/backups \
+  -e PMH_KNOWLEDGE_INTERNAL_URL="${PMH_KNOWLEDGE_INTERNAL_URL:-http://tdai-memory-hub:8424}" \
+  -e KNOWLEDGE_SERVICE_KEY="${KNOWLEDGE_SERVICE_KEY:-}" \
+  -e PMH_GOOGLE_OAUTH_CLIENT_ID="${PMH_GOOGLE_OAUTH_CLIENT_ID:-}" \
+  -e PMH_GOOGLE_OAUTH_CLIENT_SECRET="${PMH_GOOGLE_OAUTH_CLIENT_SECRET:-}" \
   ${MONGO_ENV_ARGS[@]+"${MONGO_ENV_ARGS[@]}"} \
   ${SCAVENGER_ENV_ARGS[@]+"${SCAVENGER_ENV_ARGS[@]}"} \
   "$MEMORY_CORE_IMAGE" >/dev/null

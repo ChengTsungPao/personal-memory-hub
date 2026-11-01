@@ -36,6 +36,14 @@ const PAGE_TO_PATH: Record<PageId, string> = Object.fromEntries(
 ) as Record<PageId, string>;
 
 function legacyHashToPath(): string | null {
+  const searchParams = new URLSearchParams(window.location.search);
+  const oauthState = searchParams.get('state') ?? '';
+  if (
+    (oauthState.startsWith('pmh_backup_') && (searchParams.has('code') || searchParams.has('error'))) ||
+    sessionStorage.getItem('pmh_google_oauth_callback')
+  ) {
+    return '/backup';
+  }
   const raw = window.location.hash.replace(/^#\/?/, '');
   const leaf = raw.split('/').filter(Boolean).pop();
   if (!leaf) return null;
@@ -74,6 +82,7 @@ export function ConsoleLayout() {
   // 独立全屏页（自带返回按钮与页头），不占用多标签页栏
   const isStandalonePage =
     location.pathname.startsWith('/models') ||
+    location.pathname.startsWith('/backup') ||
     location.pathname.startsWith('/docs') ||
     location.pathname === '/guide';
 
@@ -255,4 +264,3 @@ export function ConsoleLayout() {
     </div>
   );
 }
- 

@@ -165,6 +165,38 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
               </Button>
             </div>
 
+            {/* 1b. 備份設定 (Google Drive) */}
+            <div
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'space-between',
+                padding: '12px 14px',
+                border: '1px solid var(--tea-color-border-primary-default)',
+                borderRadius: 6,
+                background: 'var(--tea-color-bg-secondary-default)',
+              }}
+            >
+              <div>
+                <Text style={{ fontSize: 13, fontWeight: 600, display: 'block' }}>
+                  備份設定 (Google Drive)
+                </Text>
+                <Text theme="weak" style={{ fontSize: 12, marginTop: 4, display: 'block' }}>
+                  設定備份加密密碼、Google Drive 授權與每日自動備份排程。
+                </Text>
+              </div>
+              <Button
+                type="primary"
+                style={{ marginTop: 12, alignSelf: 'flex-start' }}
+                onClick={() => {
+                  onClose();
+                  navigate('/backup');
+                }}
+              >
+                前往設定
+              </Button>
+            </div>
+
             {/* 2. 快速上手 */}
             <div
               style={{

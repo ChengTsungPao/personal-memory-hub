@@ -124,6 +124,14 @@ export class SqliteMetadataStore implements IMetadataStore {
     }
   }
 
+  getRawDb(): DatabaseSync {
+    return this.db;
+  }
+
+  getDbPath(): string {
+    return this.dbPath;
+  }
+
   // ============================================================
   // Schema
   // ============================================================

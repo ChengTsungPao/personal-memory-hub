@@ -90,6 +90,15 @@ export {
   type ChatMemorySearchHit,
 } from './api/chat-memory';
 
+// ── Backup ──
+export {
+  backupApi,
+  type BackupStatus,
+  type BackupRunRecord,
+  type PasswordAuditEntry,
+  type DeviceAuthSession,
+} from './api/backup';
+
 // ── 共享类型（从 types.ts 透传） ──
 export type {
   MetaEnvelope,

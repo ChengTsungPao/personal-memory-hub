@@ -4,7 +4,7 @@
  *   左侧：品牌 Logo「Memory Hub」 + 分隔线 + 团队切换器（TeamSwitcher）
  *   右侧：同步状态指示 + 语言切换 + 用户头像菜单
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Avatar,
   Button,
@@ -22,6 +22,7 @@ import { SettingIcon } from 'tea-icons-react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { SettingsDialog } from '@/components/SettingsDialog';
+import { backupApi } from '@/lib/teamApi';
 import { type TeamRole } from '@/services/useCurrentRole';
 import { TeamSwitcher } from './TeamSwitcher';
 import { LanguageSwitcher } from './LanguageSwitcher';
@@ -45,6 +46,38 @@ export function GlobalHeader({
   const navigate = useNavigate();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [backupFailedReason, setBackupFailedReason] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (userRole !== 'admin') {
+      setBackupFailedReason(null);
+      return;
+    }
+    let cancelled = false;
+    const checkBackup = () => {
+      backupApi
+        .status()
+        .then((s) => {
+          if (cancelled) return;
+          if (s.last_run?.status === 'failed') {
+            setBackupFailedReason(s.last_run.error || '備份執行失敗');
+          } else {
+            setBackupFailedReason(null);
+          }
+        })
+        .catch(() => {
+          // ignore network errors in background header poll
+        });
+    };
+    checkBackup();
+    const timer = window.setInterval(checkBackup, 60_000);
+    window.addEventListener('pmh-backup-status-changed', checkBackup);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+      window.removeEventListener('pmh-backup-status-changed', checkBackup);
+    };
+  }, [userRole]);
 
   return (
     <header className="_memory-global-header">
@@ -59,10 +92,28 @@ export function GlobalHeader({
 
       {/* 右侧：同步状态 + 语言切换 + 用户菜单 */}
       <div className="_memory-global-header-right">
-        {/* <span className="_memory-global-header-sync" title={t('header.sync.title')}>
-        <span className="_memory-global-header-sync-dot" />
-        {t('header.sync')}
-      </span> */}
+        {backupFailedReason && (
+          <button
+            type="button"
+            title={`最近一次備份失敗：${backupFailedReason}（點擊前往備份設定）`}
+            onClick={() => navigate('/backup')}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+              padding: '3px 10px',
+              borderRadius: 4,
+              border: '1px solid #e54545',
+              background: 'rgba(229, 69, 69, 0.12)',
+              color: '#e54545',
+              fontSize: 12,
+              fontWeight: 600,
+              cursor: 'pointer',
+            }}
+          >
+            ⚠️ 備份失敗
+          </button>
+        )}
 
         <LanguageSwitcher />
 

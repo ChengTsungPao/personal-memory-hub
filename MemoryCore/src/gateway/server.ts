@@ -92,6 +92,7 @@ import { readMongoEnvConfig } from "../utils/env-config.js";
 import { makeSkillRouteTable } from "./skill-handlers.js";
 import { handleV3AnalyticsRoute, createAnalyticsChClientAsync } from "./analytics/index.js";
 import type { AnalyticsChClient } from "./analytics/index.js";
+import { BackupEngine, handleV3BackupRoute } from "../backup/index.js";
 import type { SkillRouterDeps as SkillRouterDeps } from "./skill-handlers.js";
 import {
   wireConversationAddHandler,
@@ -328,6 +329,7 @@ export class TdaiGateway {
   private metadataStorePool: MetadataStorePool | null = null;
   private analyticsChClientInstance: AnalyticsChClient | null | undefined = undefined; // undefined = not yet initialized
   private analyticsChInitPromise: Promise<void> | null = null;
+  private backupEngine: BackupEngine | null = null;
   private memorySystemUserConfig: MemorySystemUserConfig | undefined;
   private readonly metadataServiceByInstance = new Map<string, MetadataService>();
 
@@ -448,6 +450,44 @@ export class TdaiGateway {
   private async ensureMetadataStore(instanceId: string): Promise<IMetadataStore> {
     const pool = await this.ensureMetadataStorePool();
     return pool.getStore(instanceId);
+  }
+
+  private ensureBackupEngine(): BackupEngine {
+    if (!this.backupEngine) {
+      const baseDir = this.config.data.baseDir;
+      const stagingRootDir = process.env.PMH_BACKUP_STAGING_DIR || join(baseDir, "backup-staging");
+      const localBackupDir = process.env.PMH_BACKUP_LOCAL_DIR || join(baseDir, "backups");
+      this.backupEngine = new BackupEngine({
+        coreDataDir: baseDir,
+        stagingRootDir,
+        localBackupDir,
+        getVectorDb: () => {
+          try {
+            const vs = this.core.getVectorStore() as unknown as {
+              getRawDb?: () => import("node:sqlite").DatabaseSync;
+            };
+            return vs?.getRawDb ? vs.getRawDb() : null;
+          } catch {
+            return null;
+          }
+        },
+        getMetadataStore: (instanceId) => this.ensureMetadataStore(instanceId),
+        knowledgeInternalUrl: process.env.PMH_KNOWLEDGE_INTERNAL_URL || "http://tdai-memory-hub:8424",
+        knowledgeServiceKey: process.env.KNOWLEDGE_SERVICE_KEY || "",
+        hostFiles: {
+          adminKeyPath: process.env.PMH_HOST_ADMIN_KEY_PATH || "/data/host-config/admin-key",
+          agentsJsonPath: process.env.PMH_HOST_AGENTS_JSON_PATH || "/data/host-config/agents.json",
+          globalEnvPath: process.env.PMH_HOST_GLOBAL_ENV_PATH || "/data/host-config/global.env",
+          gatewayYamlPath: process.env.PMH_HOST_GATEWAY_YAML_PATH || "/data/config/tdai-gateway.yaml",
+          claudeProxyEnvPath: process.env.PMH_HOST_CLAUDE_PROXY_ENV_PATH || "/data/host-config/claude-proxy.env",
+          llmGatewayEnvPath: process.env.PMH_HOST_LLM_GATEWAY_ENV_PATH || "/data/host-config/llm-gateway.env",
+          llmGatewayConfigJsonPath:
+            process.env.PMH_HOST_LLM_GATEWAY_CONFIG_PATH || "/data/host-config/llm-gateway-config.json",
+        },
+        logger: this.logger,
+      });
+    }
+    return this.backupEngine;
   }
 
   /**
@@ -757,6 +797,7 @@ export class TdaiGateway {
         this.startTime = Date.now();
         this.logger.info(`Gateway listening on http://${host}:${port}`);
         this.logSecurityPosture();
+        this.ensureBackupEngine().startScheduler();
         resolve();
       });
       this.server!.on("error", reject);
@@ -852,6 +893,9 @@ export class TdaiGateway {
     if (this.scavengerTimer) {
       clearTimeout(this.scavengerTimer);
       this.scavengerTimer = null;
+    }
+    if (this.backupEngine) {
+      this.backupEngine.stopScheduler();
     }
     if (this.timerScanner) {
       await this.timerScanner.stop();
@@ -974,6 +1018,19 @@ export class TdaiGateway {
           },
         );
         if (handledAnalytics) return;
+      }
+
+      // ── v3 backup routes (/v3/backup/*) ──
+      if (pathname.startsWith("/v3/backup/")) {
+        if (!this.checkAuthForV2(req, res)) return;
+        const handledBackup = await handleV3BackupRoute(
+          req, res, pathname, method, parseJsonBody, sendJson,
+          {
+            getBackupEngine: () => this.ensureBackupEngine(),
+            getMetadataService: (instanceId) => this.ensureMetadataService(instanceId),
+          },
+        );
+        if (handledBackup) return;
       }
 
       // ── v2 / v3 API routes ──

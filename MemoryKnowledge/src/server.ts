@@ -25,6 +25,7 @@ import { createCodeGraphRoutes } from "./routes/code-graph.js";
 import { createToolsRoutes } from "./routes/tools.js";
 import { createHealthRoutes } from "./routes/health.js";
 import { createLlmBindingRoutes } from "./routes/llm-binding.js";
+import { createBackupRoutes } from "./routes/backup.js";
 import { createAutoSyncRoutes } from "./routes/auto-sync.js";
 import { createConnectorRoutes } from "./routes/connectors.js";
 import { accessLog } from "./middleware/response-envelope.js";
@@ -44,7 +45,7 @@ export function createApp() {
   const knowledgeTelemetry = createKnowledgeTelemetry(config.clickhouse);
 
   // Initialize DB + knowledge module
-  const { db } = createDb({ path: config.dbPath });
+  const { db, raw } = createDb({ path: config.dbPath });
   const knowledgeModule = createKnowledgeModule({
     dataDir: config.dataDir,
     db,
@@ -92,6 +93,11 @@ export function createApp() {
   // internal/* — control-plane endpoints (TMC / operator). Per-instance LLM routing.
   api.route("/internal/llm-binding", createLlmBindingRoutes({
     llmBindingStore: knowledgeModule.llmBindingStore,
+  }));
+  api.route("/internal/backup", createBackupRoutes({
+    dataDir: config.dataDir,
+    dbPath: config.dbPath,
+    rawDb: raw,
   }));
 
   // auto-sync admin — 定时同步调度器状态查询 + 手动触发
