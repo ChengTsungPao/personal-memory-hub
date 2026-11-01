@@ -17,6 +17,7 @@ import { ApiKeysPage } from '@/pages/ApiKeysPage';
 import { GuidePage } from '@/pages/GuidePage';
 import { ModelSettingsPage } from '@/pages/ModelSettingsPage';
 import { AnalyticsPage } from '@/pages/AnalyticsPage';
+import { BackupSettingsPage } from '@/pages/BackupSettingsPage';
 
 export const routes: RouteObject[] = [
   {
@@ -33,6 +34,7 @@ export const routes: RouteObject[] = [
       { path: 'team/agents', element: <AgentsPage /> },
       { path: 'team/api-keys', element: <ApiKeysPage /> },
       { path: 'models', element: <ModelSettingsPage /> },
+      { path: 'backup', element: <BackupSettingsPage /> },
       { path: 'docs', element: <GuidePage /> },
       { path: 'docs/:tab', element: <GuidePage /> },
       { path: 'guide', element: <Navigate to="/docs/quick" replace /> },

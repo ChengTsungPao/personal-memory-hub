@@ -74,6 +74,7 @@ export function ConsoleLayout() {
   // 独立全屏页（自带返回按钮与页头），不占用多标签页栏
   const isStandalonePage =
     location.pathname.startsWith('/models') ||
+    location.pathname.startsWith('/backup') ||
     location.pathname.startsWith('/docs') ||
     location.pathname === '/guide';
 
@@ -255,4 +256,3 @@ export function ConsoleLayout() {
     </div>
   );
 }
- 
