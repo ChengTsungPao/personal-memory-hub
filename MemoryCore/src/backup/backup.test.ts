@@ -544,6 +544,10 @@ describe('Memory Hub Backup System (Design Doc v1.1)', () => {
       newPassword: 'one-click-oauth-password-123',
       confirmPassword: 'one-click-oauth-password-123',
     });
+    await engine.updateSettings({
+      drive_client_id: 'test-desktop-client.apps.googleusercontent.com',
+      drive_client_secret: 'test-desktop-secret',
+    });
 
     const redirectSession = await engine.startGoogleOAuthRedirectFlow({
       redirect_uri: 'http://localhost:8125/',

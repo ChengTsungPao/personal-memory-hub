@@ -23,11 +23,11 @@ const DRIVE_UPLOAD_URL = "https://www.googleapis.com/upload/drive/v3/files?uploa
  * Default public Desktop OAuth 2.0 client for 1-click localhost loopback redirect flow
  * (RFC 8252 §8.5 — native/desktop apps treat client_secret as non-confidential).
  */
-export const DEFAULT_GOOGLE_OAUTH_CLIENT_ID = "202264815644.apps.googleusercontent.com";
-export const DEFAULT_GOOGLE_OAUTH_CLIENT_SECRET = Buffer.from(
-  "WDRaM2NhOHhmV0RiMVZvby1GOWE3WnhK",
-  "base64",
-).toString("utf8");
+/**
+ * Optional fallback public Desktop OAuth 2.0 client ID when not configured in `meta_config_params`.
+ */
+export const DEFAULT_GOOGLE_OAUTH_CLIENT_ID = "";
+export const DEFAULT_GOOGLE_OAUTH_CLIENT_SECRET = "";
 
 export const BACKUP_FILENAME_REGEX = /^pmh-backup-(\d{8})-(\d{4})-v(\d+)\.tar\.gz\.age$/;
 
