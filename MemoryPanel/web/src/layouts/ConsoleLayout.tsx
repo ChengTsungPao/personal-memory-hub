@@ -38,7 +38,10 @@ const PAGE_TO_PATH: Record<PageId, string> = Object.fromEntries(
 function legacyHashToPath(): string | null {
   const searchParams = new URLSearchParams(window.location.search);
   const oauthState = searchParams.get('state') ?? '';
-  if (oauthState.startsWith('pmh_backup_') && (searchParams.has('code') || searchParams.has('error'))) {
+  if (
+    (oauthState.startsWith('pmh_backup_') && (searchParams.has('code') || searchParams.has('error'))) ||
+    sessionStorage.getItem('pmh_google_oauth_callback')
+  ) {
     return '/backup';
   }
   const raw = window.location.hash.replace(/^#\/?/, '');

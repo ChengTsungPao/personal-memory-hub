@@ -25,7 +25,7 @@ const DRIVE_UPLOAD_URL = "https://www.googleapis.com/upload/drive/v3/files?uploa
  */
 export const DEFAULT_GOOGLE_OAUTH_CLIENT_ID = "202264815644.apps.googleusercontent.com";
 export const DEFAULT_GOOGLE_OAUTH_CLIENT_SECRET = Buffer.from(
-  "X0R3cW9zUFdlakZIaFducnNpWUJKaF9E",
+  "WDRaM2NhOHhmV0RiMVZvby1GOWE3WnhK",
   "base64",
 ).toString("utf8");
 

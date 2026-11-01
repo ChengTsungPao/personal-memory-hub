@@ -42,6 +42,30 @@ export const routes: RouteObject[] = [
   },
 ];
 
+// 在 createHashRouter 初始化前拦截 Google Drive 备份 OAuth 回调 (?state=pmh_backup_...&code=...)：
+// 先存入 sessionStorage 并把 hash 切换为 #/backup，避免 main.tsx 的 stripWoaAuthParams 清掉参数或跳回首页。
+(function interceptBackupOAuthCallback() {
+  if (typeof window === 'undefined') return;
+  try {
+    const url = new URL(window.location.href);
+    const state = url.searchParams.get('state') ?? '';
+    if (state.startsWith('pmh_backup_')) {
+      const code = url.searchParams.get('code') ?? '';
+      const error = url.searchParams.get('error') ?? '';
+      sessionStorage.setItem(
+        'pmh_google_oauth_callback',
+        JSON.stringify({ code, state, error }),
+      );
+      for (const key of ['code', 'state', 'scope', 'error', 'authuser', 'prompt']) {
+        url.searchParams.delete(key);
+      }
+      window.history.replaceState(null, '', `${url.pathname}${url.search}#/backup`);
+    }
+  } catch {
+    /* ignore */
+  }
+})();
+
 /**
  * 使用 HashRouter — 保持与旧版 hash 路由兼容，
  * 避免刷新 404（静态部署不需要服务端 fallback 配置）。

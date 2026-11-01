@@ -87,10 +87,28 @@ export function BackupSettingsPage() {
   }, []);
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const state = params.get('state') ?? '';
-    const code = params.get('code') ?? '';
-    const oauthErr = params.get('error') ?? '';
+    let state = '';
+    let code = '';
+    let oauthErr = '';
+
+    const rawStored = sessionStorage.getItem('pmh_google_oauth_callback');
+    if (rawStored) {
+      sessionStorage.removeItem('pmh_google_oauth_callback');
+      try {
+        const parsed = JSON.parse(rawStored) as { code?: string; state?: string; error?: string };
+        state = parsed.state ?? '';
+        code = parsed.code ?? '';
+        oauthErr = parsed.error ?? '';
+      } catch {
+        /* ignore */
+      }
+    } else {
+      const params = new URLSearchParams(window.location.search);
+      state = params.get('state') ?? '';
+      code = params.get('code') ?? '';
+      oauthErr = params.get('error') ?? '';
+    }
+
     if (state.startsWith('pmh_backup_') && (code || oauthErr)) {
       window.history.replaceState(null, '', `${window.location.pathname}#/backup`);
       if (oauthErr) {
