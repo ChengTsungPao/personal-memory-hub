@@ -13,6 +13,7 @@ const ALLOWED_BACKUP_ACTIONS = new Set([
   'password',
   'settings',
   'google-auth/start',
+  'google-auth/callback',
   'google-auth/poll',
   'run',
 ]);

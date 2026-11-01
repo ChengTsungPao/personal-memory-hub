@@ -36,6 +36,11 @@ const PAGE_TO_PATH: Record<PageId, string> = Object.fromEntries(
 ) as Record<PageId, string>;
 
 function legacyHashToPath(): string | null {
+  const searchParams = new URLSearchParams(window.location.search);
+  const oauthState = searchParams.get('state') ?? '';
+  if (oauthState.startsWith('pmh_backup_') && (searchParams.has('code') || searchParams.has('error'))) {
+    return '/backup';
+  }
   const raw = window.location.hash.replace(/^#\/?/, '');
   const leaf = raw.split('/').filter(Boolean).pop();
   if (!leaf) return null;

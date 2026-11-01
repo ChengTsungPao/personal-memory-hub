@@ -22,6 +22,7 @@
  *          optional 30-day retention cleanup on both local and Drive.
  */
 
+import { randomBytes } from "node:crypto";
 import { createRequire } from "node:module";
 import {
   cpSync,
@@ -46,8 +47,13 @@ import {
 } from "./crypto.js";
 import {
   BACKUP_FILENAME_REGEX,
+  buildGoogleOAuthAuthorizeUrl,
+  DEFAULT_GOOGLE_OAUTH_CLIENT_ID,
+  DEFAULT_GOOGLE_OAUTH_CLIENT_SECRET,
   type DeviceAuthSession,
   ensureDriveFolderPath,
+  exchangeAuthorizationCode,
+  type OAuthRedirectSession,
   parseBackupFilenameDateMs,
   pollDeviceToken,
   pruneOldDriveBackups,
@@ -185,6 +191,11 @@ export class BackupEngine {
     device_code: string;
     user_code: string;
     verification_url: string;
+    expires_at_ms: number;
+  } | null = null;
+  private pendingOAuthRedirectSession: {
+    state: string;
+    redirect_uri: string;
     expires_at_ms: number;
   } | null = null;
 
@@ -424,6 +435,91 @@ export class BackupEngine {
   }
 
   /**
+   * Start 1-click Google OAuth 2.0 Loopback Redirect Flow (`drive.file` scope).
+   */
+  async startGoogleOAuthRedirectFlow(
+    input: { redirect_uri: string; client_id?: string; client_secret?: string },
+    instanceId = "default",
+  ): Promise<OAuthRedirectSession> {
+    if (input.client_id || input.client_secret) {
+      await this.updateSettings(
+        {
+          drive_client_id: input.client_id,
+          drive_client_secret: input.client_secret,
+        },
+        instanceId,
+      );
+    }
+    const redirectUri = input.redirect_uri?.trim();
+    if (!redirectUri) {
+      throw new Error("MISSING_REDIRECT_URI: redirect_uri is required for OAuth redirect flow");
+    }
+    const map = await this.getParamMap(instanceId);
+    const clientId = map.get("drive_client_id") || DEFAULT_GOOGLE_OAUTH_CLIENT_ID;
+    const state = `pmh_backup_${randomBytes(16).toString("hex")}`;
+    const authUrl = buildGoogleOAuthAuthorizeUrl({
+      clientId,
+      redirectUri,
+      state,
+    });
+    this.pendingOAuthRedirectSession = {
+      state,
+      redirect_uri: redirectUri,
+      expires_at_ms: Date.now() + 15 * 60 * 1000,
+    };
+    return {
+      auth_url: authUrl,
+      state,
+      redirect_uri: redirectUri,
+    };
+  }
+
+  /**
+   * Complete 1-click Google OAuth 2.0 Loopback Redirect Flow by exchanging `code` for `refresh_token`.
+   */
+  async completeGoogleOAuthCallback(
+    input: { code: string; state?: string; redirect_uri?: string },
+    instanceId = "default",
+  ): Promise<{ status: "authorized" }> {
+    const code = input.code?.trim();
+    if (!code) {
+      throw new Error("MISSING_OAUTH_CODE: Authorization code is required");
+    }
+    if (
+      this.pendingOAuthRedirectSession &&
+      input.state &&
+      input.state !== this.pendingOAuthRedirectSession.state
+    ) {
+      throw new Error("INVALID_OAUTH_STATE: OAuth state mismatch");
+    }
+    const redirectUri =
+      input.redirect_uri?.trim() ||
+      this.pendingOAuthRedirectSession?.redirect_uri ||
+      "http://localhost:8125/";
+
+    const map = await this.getParamMap(instanceId);
+    const clientId = map.get("drive_client_id") || DEFAULT_GOOGLE_OAUTH_CLIENT_ID;
+    const clientSecret = map.get("drive_client_secret") || DEFAULT_GOOGLE_OAUTH_CLIENT_SECRET;
+
+    const tokens = await exchangeAuthorizationCode(
+      {
+        clientId,
+        clientSecret,
+        code,
+        redirectUri,
+      },
+      this.fetchImpl,
+    );
+    const refreshToken = tokens.refresh_token ?? "";
+    if (!refreshToken) {
+      throw new Error("NO_REFRESH_TOKEN: Google did not return a refresh_token");
+    }
+    await this.setParam("drive_refresh_token", refreshToken, "Google Drive OAuth refresh token", instanceId);
+    this.pendingOAuthRedirectSession = null;
+    return { status: "authorized" };
+  }
+
+  /**
    * Start Google OAuth 2.0 Device Flow.
    */
   async startGoogleDeviceFlow(
@@ -440,11 +536,7 @@ export class BackupEngine {
       );
     }
     const map = await this.getParamMap(instanceId);
-    const clientId = map.get("drive_client_id") ?? "";
-    const clientSecret = map.get("drive_client_secret") ?? "";
-    if (!clientId || !clientSecret) {
-      throw new Error("MISSING_OAUTH_CLIENT: Please save Google OAuth client_id and client_secret first");
-    }
+    const clientId = map.get("drive_client_id") || DEFAULT_GOOGLE_OAUTH_CLIENT_ID;
     const session = await startDeviceAuthorization(clientId, this.fetchImpl);
     this.pendingDeviceSession = {
       device_code: session.device_code,
@@ -463,10 +555,10 @@ export class BackupEngine {
     instanceId = "default",
   ): Promise<{ status: "pending" | "authorized" }> {
     const map = await this.getParamMap(instanceId);
-    const clientId = map.get("drive_client_id") ?? "";
-    const clientSecret = map.get("drive_client_secret") ?? "";
+    const clientId = map.get("drive_client_id") || DEFAULT_GOOGLE_OAUTH_CLIENT_ID;
+    const clientSecret = map.get("drive_client_secret") || DEFAULT_GOOGLE_OAUTH_CLIENT_SECRET;
     const code = deviceCode?.trim() || this.pendingDeviceSession?.device_code || "";
-    if (!clientId || !clientSecret || !code) {
+    if (!code) {
       throw new Error("NO_ACTIVE_DEVICE_FLOW: Start Google authorization first");
     }
     const res = await pollDeviceToken(clientId, clientSecret, code, this.fetchImpl);
@@ -682,13 +774,13 @@ export class BackupEngine {
 
       // 8. Upload to Google Drive if authorized
       let driveFileId: string | undefined;
-      const clientId = map.get("drive_client_id") ?? "";
-      const clientSecret = map.get("drive_client_secret") ?? "";
+      const clientId = map.get("drive_client_id") || DEFAULT_GOOGLE_OAUTH_CLIENT_ID;
+      const clientSecret = map.get("drive_client_secret") || DEFAULT_GOOGLE_OAUTH_CLIENT_SECRET;
       const refreshToken = map.get("drive_refresh_token") ?? "";
       const drivePath = map.get("drive_path") || DEFAULT_DRIVE_PATH;
       const deleteOlderThanMonth = map.get("delete_older_than_month") === "true";
 
-      if (clientId && clientSecret && refreshToken) {
+      if (refreshToken) {
         const accessToken = await refreshAccessToken(
           clientId,
           clientSecret,

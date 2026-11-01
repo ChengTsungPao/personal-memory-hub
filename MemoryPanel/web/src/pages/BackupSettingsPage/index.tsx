@@ -27,7 +27,6 @@ import {
 import {
   backupApi,
   type BackupStatus,
-  type DeviceAuthSession,
 } from '@/lib/api/backup';
 import { tea } from '@/lib/tea-bridge';
 import '@/pages/GuidePage/style.css';
@@ -62,17 +61,13 @@ export function BackupSettingsPage() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [savingPassword, setSavingPassword] = useState(false);
 
-  // Drive & OAuth form
-  const [clientId, setClientId] = useState('');
-  const [clientSecret, setClientSecret] = useState('');
+  // Drive & Schedule form
   const [drivePath, setDrivePath] = useState('backup/personal_memory_hub/');
   const [scheduleHour, setScheduleHour] = useState(4);
   const [savingSettings, setSavingSettings] = useState(false);
 
-  // Device flow state
-  const [deviceSession, setDeviceSession] = useState<DeviceAuthSession | null>(null);
+  // Google OAuth redirect state
   const [startingAuth, setStartingAuth] = useState(false);
-  const [pollingAuth, setPollingAuth] = useState(false);
 
   // Manual backup run
   const [runningBackup, setRunningBackup] = useState(false);
@@ -81,7 +76,6 @@ export function BackupSettingsPage() {
     try {
       const s = await backupApi.status();
       setStatus(s);
-      setClientId((prev) => prev || s.drive_client_id || '');
       setDrivePath(s.drive_path || 'backup/personal_memory_hub/');
       setScheduleHour(s.schedule_hour ?? 4);
       setError('');
@@ -93,6 +87,37 @@ export function BackupSettingsPage() {
   }, []);
 
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const state = params.get('state') ?? '';
+    const code = params.get('code') ?? '';
+    const oauthErr = params.get('error') ?? '';
+    if (state.startsWith('pmh_backup_') && (code || oauthErr)) {
+      window.history.replaceState(null, '', `${window.location.pathname}#/backup`);
+      if (oauthErr) {
+        tea.notify.error(`Google 授權未完成：${oauthErr}`);
+        void loadStatus();
+        return;
+      }
+      setStartingAuth(true);
+      void backupApi
+        .completeGoogleAuth({
+          code,
+          state,
+          redirect_uri: `${window.location.origin}/`,
+        })
+        .then(async () => {
+          tea.notify.success('Google Drive 連結成功！');
+          await loadStatus();
+        })
+        .catch((e) => {
+          tea.notify.error(e instanceof Error ? e.message : String(e));
+          void loadStatus();
+        })
+        .finally(() => {
+          setStartingAuth(false);
+        });
+      return;
+    }
     void loadStatus();
   }, [loadStatus]);
 
@@ -166,12 +191,9 @@ export function BackupSettingsPage() {
       const updated = await backupApi.updateSettings({
         drive_path: drivePath.trim() || 'backup/personal_memory_hub/',
         schedule_hour: scheduleHour,
-        drive_client_id: clientId.trim(),
-        ...(clientSecret.trim() ? { drive_client_secret: clientSecret.trim() } : {}),
       });
       setStatus(updated);
-      setClientSecret('');
-      tea.notify.success('備份路徑與 OAuth 設定已儲存');
+      tea.notify.success('備份路徑與排程設定已儲存');
     } catch (e) {
       tea.notify.error(e instanceof Error ? e.message : String(e));
     } finally {
@@ -183,35 +205,17 @@ export function BackupSettingsPage() {
     setStartingAuth(true);
     try {
       const session = await backupApi.startGoogleAuth({
-        ...(clientId.trim() ? { client_id: clientId.trim() } : {}),
-        ...(clientSecret.trim() ? { client_secret: clientSecret.trim() } : {}),
+        redirect_uri: `${window.location.origin}/`,
       });
-      setDeviceSession(session);
-      setClientSecret('');
-      await loadStatus();
+      if (session.auth_url) {
+        window.location.href = session.auth_url;
+        return;
+      }
+      tea.notify.error('無法取得 Google 授權跳轉網址');
     } catch (e) {
       tea.notify.error(e instanceof Error ? e.message : String(e));
     } finally {
       setStartingAuth(false);
-    }
-  }
-
-  async function handlePollGoogleAuth() {
-    if (!deviceSession) return;
-    setPollingAuth(true);
-    try {
-      const res = await backupApi.pollGoogleAuth(deviceSession.device_code);
-      if (res.status === 'authorized') {
-        setDeviceSession(null);
-        tea.notify.success('Google Drive 授權成功！');
-        await loadStatus();
-      } else {
-        tea.notify.warning('尚未完成瀏覽器授權，請在 Google 頁面輸入代碼並同意後再試一次');
-      }
-    } catch (e) {
-      tea.notify.error(e instanceof Error ? e.message : String(e));
-    } finally {
-      setPollingAuth(false);
     }
   }
 
@@ -547,34 +551,13 @@ export function BackupSettingsPage() {
 
         {/* 3. Google Drive 授權、路徑與保留策略 */}
         <Card>
-          <Card.Body title="步驟 2：Google Drive 裝置授權、路徑與保留策略">
+          <Card.Body title="步驟 2：Google Drive 連結、路徑與保留策略">
             <Text theme="weak" style={{ display: 'block', marginBottom: 14, fontSize: 12, lineHeight: '18px' }}>
-              請先在 Google Cloud Console 建立一個類型為「電視與受限輸入裝置 (TVs and Limited Input devices)」的 OAuth 2.0 用戶端，
-              並啟用 Google Drive API。授權範圍僅使用 <code>drive.file</code>（只能存取本程式建立的備份檔）。
+              點擊下方「連結 Google Drive」即可直接跳轉至 Google 登入頁面完成授權（無須手動申請或填寫 Client ID / Secret）。
+              授權範圍僅限 <code>drive.file</code>，應用程式只能存取自己建立的加密備份檔，無法讀取您雲端硬碟裡的其他檔案。
             </Text>
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 14 }}>
-              <div>
-                <Text theme="label" style={{ display: 'block', marginBottom: 6 }}>Google OAuth Client ID</Text>
-                <Input
-                  size="full"
-                  placeholder="xxxx.apps.googleusercontent.com"
-                  value={clientId}
-                  onChange={(v) => setClientId(v)}
-                />
-              </div>
-              <div>
-                <Text theme="label" style={{ display: 'block', marginBottom: 6 }}>
-                  Google OAuth Client Secret {status?.drive_has_client_secret ? '（已儲存，留空則保留原值）' : ''}
-                </Text>
-                <Input
-                  type="password"
-                  size="full"
-                  placeholder={status?.drive_has_client_secret ? '已設定（如需更新請重新輸入）' : 'GOCSPX-...'}
-                  value={clientSecret}
-                  onChange={(v) => setClientSecret(v)}
-                />
-              </div>
               <div>
                 <Text theme="label" style={{ display: 'block', marginBottom: 6 }}>Google Drive 備份資料夾路徑</Text>
                 <Input
@@ -626,7 +609,18 @@ export function BackupSettingsPage() {
               />
             </div>
 
-            <div style={{ marginTop: 14, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            <div style={{ marginTop: 14, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              <Button
+                type="primary"
+                disabled={startingAuth}
+                onClick={() => void handleStartGoogleAuth()}
+              >
+                {startingAuth
+                  ? '正在跳轉至 Google 授權…'
+                  : status?.drive_authorized
+                    ? '重新連結 Google Drive'
+                    : '連結 Google Drive'}
+              </Button>
               <Button
                 type="weak"
                 disabled={savingSettings}
@@ -634,49 +628,12 @@ export function BackupSettingsPage() {
               >
                 儲存路徑與排程設定
               </Button>
-              <Button
-                type="primary"
-                disabled={startingAuth || (!clientId.trim() && !status?.drive_client_id)}
-                onClick={() => void handleStartGoogleAuth()}
-              >
-                {startingAuth ? '正在取得授權碼…' : status?.drive_authorized ? '重新連結 Google Drive' : '開始 Google 裝置授權'}
-              </Button>
+              {status?.drive_authorized && (
+                <Tag theme="success" variant="soft" size="sm">
+                  已完成 Google Drive 授權綁定
+                </Tag>
+              )}
             </div>
-
-            {deviceSession && (
-              <div
-                style={{
-                  marginTop: 16,
-                  padding: 14,
-                  borderRadius: 8,
-                  border: '1px solid var(--tea-color-border-primary-default)',
-                  background: 'var(--tea-color-bg-brand-lighten-default)',
-                }}
-              >
-                <Text style={{ fontWeight: 600, display: 'block', marginBottom: 6 }}>
-                  請在瀏覽器開啟下方網址，並輸入裝置授權碼：
-                </Text>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 10 }}>
-                  <Tag theme="primary">授權碼：{deviceSession.user_code}</Tag>
-                  <Copy text={deviceSession.user_code} />
-                  <a
-                    href={deviceSession.verification_url}
-                    target="_blank"
-                    rel="noreferrer"
-                    style={{ textDecoration: 'underline', fontWeight: 600 }}
-                  >
-                    開啟 {deviceSession.verification_url} ↗
-                  </a>
-                </div>
-                <Button
-                  type="primary"
-                  disabled={pollingAuth}
-                  onClick={() => void handlePollGoogleAuth()}
-                >
-                  {pollingAuth ? '正在確認授權狀態…' : '我已在瀏覽器完成同意，點此完成綁定'}
-                </Button>
-              </div>
-            )}
           </Card.Body>
         </Card>
 

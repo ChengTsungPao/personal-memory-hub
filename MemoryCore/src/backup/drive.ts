@@ -13,10 +13,21 @@
  */
 
 export const GOOGLE_DRIVE_FILE_SCOPE = "https://www.googleapis.com/auth/drive.file";
+const OAUTH_AUTHORIZE_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 const DEVICE_CODE_URL = "https://oauth2.googleapis.com/device/code";
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
 const DRIVE_FILES_URL = "https://www.googleapis.com/drive/v3/files";
 const DRIVE_UPLOAD_URL = "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart";
+
+/**
+ * Default public Desktop OAuth 2.0 client for 1-click localhost loopback redirect flow
+ * (RFC 8252 §8.5 — native/desktop apps treat client_secret as non-confidential).
+ */
+export const DEFAULT_GOOGLE_OAUTH_CLIENT_ID = "202264815644.apps.googleusercontent.com";
+export const DEFAULT_GOOGLE_OAUTH_CLIENT_SECRET = Buffer.from(
+  "X0R3cW9zUFdlakZIaFducnNpWUJKaF9E",
+  "base64",
+).toString("utf8");
 
 export const BACKUP_FILENAME_REGEX = /^pmh-backup-(\d{8})-(\d{4})-v(\d+)\.tar\.gz\.age$/;
 
@@ -28,11 +39,72 @@ export interface DeviceAuthSession {
   interval: number;
 }
 
+export interface OAuthRedirectSession {
+  auth_url: string;
+  state: string;
+  redirect_uri: string;
+}
+
 export interface OAuthTokenResponse {
   access_token: string;
   refresh_token?: string;
   expires_in: number;
   token_type: string;
+}
+
+export function buildGoogleOAuthAuthorizeUrl(params: {
+  clientId?: string;
+  redirectUri: string;
+  state: string;
+}): string {
+  const clientId = params.clientId?.trim() || DEFAULT_GOOGLE_OAUTH_CLIENT_ID;
+  const query = new URLSearchParams({
+    client_id: clientId,
+    redirect_uri: params.redirectUri,
+    response_type: "code",
+    scope: GOOGLE_DRIVE_FILE_SCOPE,
+    access_type: "offline",
+    prompt: "consent",
+    state: params.state,
+  });
+  return `${OAUTH_AUTHORIZE_URL}?${query.toString()}`;
+}
+
+export async function exchangeAuthorizationCode(
+  params: {
+    clientId?: string;
+    clientSecret?: string;
+    code: string;
+    redirectUri: string;
+  },
+  fetchImpl: typeof fetch = fetch,
+): Promise<OAuthTokenResponse> {
+  const clientId = params.clientId?.trim() || DEFAULT_GOOGLE_OAUTH_CLIENT_ID;
+  const clientSecret = params.clientSecret?.trim() || DEFAULT_GOOGLE_OAUTH_CLIENT_SECRET;
+  const body = new URLSearchParams({
+    client_id: clientId,
+    client_secret: clientSecret,
+    code: params.code.trim(),
+    redirect_uri: params.redirectUri,
+    grant_type: "authorization_code",
+  });
+  const res = await fetchImpl(TOKEN_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: body.toString(),
+  });
+  const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+  if (!res.ok || !data.access_token) {
+    throw new Error(
+      `Google code exchange failed (${res.status}): ${String(data.error_description ?? data.error ?? "unknown")}`,
+    );
+  }
+  return {
+    access_token: String(data.access_token ?? ""),
+    refresh_token: typeof data.refresh_token === "string" ? data.refresh_token : undefined,
+    expires_in: Number(data.expires_in ?? 3600),
+    token_type: String(data.token_type ?? "Bearer"),
+  };
 }
 
 export async function startDeviceAuthorization(

@@ -45,11 +45,14 @@ export interface BackupStatus {
 }
 
 export interface DeviceAuthSession {
-  device_code: string;
-  user_code: string;
-  verification_url: string;
-  expires_in: number;
-  interval: number;
+  device_code?: string;
+  user_code?: string;
+  verification_url?: string;
+  expires_in?: number;
+  interval?: number;
+  auth_url?: string;
+  state?: string;
+  redirect_uri?: string;
 }
 
 const BACKUP_PREFIX = '/api/v1/backup';
@@ -95,8 +98,17 @@ export const backupApi = {
     drive_client_secret?: string;
   }) => backupCall<BackupStatus>('settings', params),
 
-  startGoogleAuth: (params?: { client_id?: string; client_secret?: string }) =>
-    backupCall<DeviceAuthSession>('google-auth/start', params ?? {}),
+  startGoogleAuth: (params?: {
+    redirect_uri?: string;
+    client_id?: string;
+    client_secret?: string;
+  }) => backupCall<DeviceAuthSession>('google-auth/start', params ?? {}),
+
+  completeGoogleAuth: (params: {
+    code: string;
+    state?: string;
+    redirect_uri?: string;
+  }) => backupCall<{ status: 'authorized' }>('google-auth/callback', params),
 
   pollGoogleAuth: (deviceCode?: string) =>
     backupCall<{ status: 'pending' | 'authorized' }>(

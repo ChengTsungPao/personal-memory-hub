@@ -493,4 +493,77 @@ describe('Memory Hub Backup System (Design Doc v1.1)', () => {
     );
     expect(fs.existsSync(path.join(localBackupDir, 'keep-me.txt'))).toBe(true);
   });
+
+  it('5. supports 1-click Google OAuth loopback redirect flow without manual client_id/client_secret', async () => {
+    const calledUrls: string[] = [];
+    const mockFetch: typeof fetch = async (input, init) => {
+      const url = String(input);
+      calledUrls.push(url);
+      if (url === 'https://oauth2.googleapis.com/token') {
+        const bodyStr = String(init?.body ?? '');
+        if (bodyStr.includes('grant_type=authorization_code')) {
+          return new Response(
+            JSON.stringify({
+              access_token: 'ya29.fake-access-token',
+              refresh_token: '1//fake-refresh-token-from-redirect',
+              expires_in: 3600,
+              token_type: 'Bearer',
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+          );
+        }
+        if (bodyStr.includes('grant_type=refresh_token')) {
+          return new Response(
+            JSON.stringify({
+              access_token: 'ya29.refreshed-access-token',
+              expires_in: 3600,
+              token_type: 'Bearer',
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+          );
+        }
+      }
+      if (url.startsWith('https://www.googleapis.com/drive/v3/files?')) {
+        return new Response(JSON.stringify({ files: [{ id: 'folder-123', name: 'personal_memory_hub' }] }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if (url.startsWith('https://www.googleapis.com/upload/drive/v3/files')) {
+        return new Response(JSON.stringify({ id: 'uploaded-file-999', name: 'backup.age' }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      return new Response('{}', { status: 200 });
+    };
+
+    const engine = createEngine({ fetchImpl: mockFetch });
+    await engine.setOrChangePassword({
+      userId: 'admin',
+      newPassword: 'one-click-oauth-password-123',
+      confirmPassword: 'one-click-oauth-password-123',
+    });
+
+    const redirectSession = await engine.startGoogleOAuthRedirectFlow({
+      redirect_uri: 'http://localhost:8125/',
+    });
+    expect(redirectSession.auth_url).toContain('https://accounts.google.com/o/oauth2/v2/auth?');
+    expect(redirectSession.auth_url).toContain('scope=https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fdrive.file');
+    expect(redirectSession.state).toMatch(/^pmh_backup_/);
+
+    const cbRes = await engine.completeGoogleOAuthCallback({
+      code: '4/0A-fake-auth-code',
+      state: redirectSession.state,
+      redirect_uri: 'http://localhost:8125/',
+    });
+    expect(cbRes.status).toBe('authorized');
+
+    const statusAfterAuth = await engine.getStatus();
+    expect(statusAfterAuth.drive_authorized).toBe(true);
+
+    const run = await engine.runBackup('manual');
+    expect(run.status).toBe('success');
+    expect(run.drive_file_id).toBe('uploaded-file-999');
+  });
 });

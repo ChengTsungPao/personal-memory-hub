@@ -125,6 +125,18 @@ export async function handleV3BackupRoute(
         return true;
       }
       case "/google-auth/start": {
+        if (typeof body.redirect_uri === "string" && body.redirect_uri.trim()) {
+          const redirectSession = await engine.startGoogleOAuthRedirectFlow(
+            {
+              redirect_uri: body.redirect_uri,
+              client_id: typeof body.client_id === "string" ? body.client_id : undefined,
+              client_secret: typeof body.client_secret === "string" ? body.client_secret : undefined,
+            },
+            instanceId,
+          );
+          sendJson(res, 200, successEnvelope(redirectSession, requestId));
+          return true;
+        }
         const session = await engine.startGoogleDeviceFlow(
           {
             client_id: typeof body.client_id === "string" ? body.client_id : undefined,
@@ -133,6 +145,18 @@ export async function handleV3BackupRoute(
           instanceId,
         );
         sendJson(res, 200, successEnvelope(session, requestId));
+        return true;
+      }
+      case "/google-auth/callback": {
+        const callbackRes = await engine.completeGoogleOAuthCallback(
+          {
+            code: typeof body.code === "string" ? body.code : "",
+            state: typeof body.state === "string" ? body.state : undefined,
+            redirect_uri: typeof body.redirect_uri === "string" ? body.redirect_uri : undefined,
+          },
+          instanceId,
+        );
+        sendJson(res, 200, successEnvelope(callbackRes, requestId));
         return true;
       }
       case "/google-auth/poll": {
@@ -155,7 +179,7 @@ export async function handleV3BackupRoute(
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     const isClientErr =
-      /^(PASSWORD_|OLD_PASSWORD_|INVALID_OLD_PASSWORD|MISSING_OAUTH_CLIENT|NO_ACTIVE_DEVICE_FLOW)/.test(
+      /^(PASSWORD_|OLD_PASSWORD_|INVALID_OLD_PASSWORD|MISSING_OAUTH_|INVALID_OAUTH_|NO_ACTIVE_DEVICE_FLOW)/.test(
         msg,
       );
     sendJson(res, isClientErr ? 400 : 500, errorEnvelope(isClientErr ? 400 : 500, msg, requestId));
