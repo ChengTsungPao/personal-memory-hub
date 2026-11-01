@@ -40,7 +40,7 @@ function formatBytes(bytes?: number): string {
 }
 
 function formatDateTime(iso?: string | null): string {
-  if (!iso) return '-';
+  if (!iso) return '尚無紀錄';
   try {
     return new Date(iso).toLocaleString();
   } catch {
@@ -239,7 +239,16 @@ export function BackupSettingsPage() {
 
   const keyVer = status?.key_version || 1;
   const sampleFile = status?.last_run?.file_name || `pmh-backup-YYYYMMDD-HHmm-v${keyVer}.tar.gz.age`;
-  const restoreCmd = `node --import tsx MemoryCore/scripts/restore-backup.ts ~/.personal-memory-hub/core-data/backups/${sampleFile} ./restored-memory-hub`;
+  const restoreCmd = `node --import tsx MemoryCore/scripts/restore-backup.ts ~/.personal-memory-hub/backups/${sampleFile} ./restored-memory-hub`;
+
+  const triggerLabel =
+    status?.last_run?.trigger === 'manual'
+      ? '手動觸發'
+      : status?.last_run?.trigger === 'scheduled'
+        ? '每日排程'
+        : status?.last_run?.trigger === 'catchup'
+          ? '開機補跑'
+          : '';
 
   return (
     <div className="guide-page">
@@ -273,77 +282,206 @@ export function BackupSettingsPage() {
         {/* 1. 總開關與狀態面板 */}
         <Card>
           <Card.Body title="備份狀態與開關">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                <Switch
-                  value={Boolean(status?.enabled)}
-                  disabled={loading || savingSettings}
-                  onChange={(v) => void handleToggleEnabled(v)}
-                />
-                <Text style={{ fontWeight: 600 }}>
-                  {status?.enabled ? '每日自動備份已啟用' : '每日自動備份已關閉'}
-                </Text>
-                {status?.has_password ? (
-                  <Tag theme="success" variant="soft">
-                    密碼版本 v{status.key_version}（指紋 {status.public_key_fingerprint}）
-                  </Tag>
-                ) : (
-                  <Tag theme="warning" variant="soft">尚未設定密碼</Tag>
-                )}
-                {status?.drive_authorized ? (
-                  <Tag theme="primary" variant="soft">Google Drive 已授權</Tag>
-                ) : (
-                  <Tag theme="default" variant="soft">僅本機備份（未授權 Drive）</Tag>
-                )}
-              </div>
-
-              <Button
-                type="primary"
-                disabled={loading || runningBackup || !status?.has_password}
-                onClick={() => void handleRunBackupNow()}
-              >
-                {runningBackup ? '正在備份中…' : '現在備份'}
-              </Button>
-            </div>
-
+            {/* 主控制列：左邊標題+狀態標籤+說明，右邊 Switch 與「現在備份」按鈕 */}
             <div
               style={{
-                marginTop: 16,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                flexWrap: 'wrap',
+                gap: 16,
+                padding: '14px 16px',
+                borderRadius: 8,
+                border: '1px solid var(--tea-color-border-primary-default)',
+                background: status?.enabled
+                  ? 'var(--tea-color-bg-brand-lighten-default)'
+                  : 'var(--tea-color-bg-secondary-default)',
+                transition: 'background-color 0.15s',
+              }}
+            >
+              <div style={{ minWidth: 240, flex: '1 1 auto' }}>
+                <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+                  <Text style={{ fontSize: 14, fontWeight: 600 }}>
+                    每日自動排程備份
+                  </Text>
+                  <Tag theme={status?.enabled ? 'success' : 'default'} variant="soft" size="sm">
+                    {status?.enabled ? '已啟用' : '已關閉'}
+                  </Tag>
+                  {status?.has_password ? (
+                    <Tag theme="primary" variant="soft" size="sm">
+                      密碼版本 v{status.key_version}（指紋 {status.public_key_fingerprint}）
+                    </Tag>
+                  ) : (
+                    <Tag theme="warning" variant="soft" size="sm">
+                      尚未設定密碼
+                    </Tag>
+                  )}
+                  <Tag theme={status?.drive_authorized ? 'success' : 'default'} variant="soft" size="sm">
+                    {status?.drive_authorized ? 'Google Drive 已連結' : '僅本機備份（未授權 Drive）'}
+                  </Tag>
+                </div>
+                <Text theme="weak" style={{ fontSize: 12, marginTop: 6, display: 'block', lineHeight: '18px' }}>
+                  開啟後將於每日 {String(status?.schedule_hour ?? 4).padStart(2, '0')}:00（{status?.timezone || 'Asia/Taipei'}）自動執行快照、加密與上傳；若錯過排程時間將於容器啟動時自動補跑一次。
+                </Text>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexShrink: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Text theme="weak" style={{ fontSize: 12 }}>
+                    自動排程
+                  </Text>
+                  <Switch
+                    value={Boolean(status?.enabled)}
+                    disabled={loading || savingSettings}
+                    onChange={(v) => void handleToggleEnabled(v)}
+                  />
+                </div>
+                <div
+                  style={{
+                    width: 1,
+                    height: 20,
+                    background: 'var(--tea-color-border-primary-default)',
+                  }}
+                />
+                <Button
+                  type="primary"
+                  disabled={loading || runningBackup || !status?.has_password}
+                  onClick={() => void handleRunBackupNow()}
+                >
+                  {runningBackup ? '正在備份中…' : '現在備份'}
+                </Button>
+              </div>
+            </div>
+
+            {/* 4 個獨立指標小卡 */}
+            <div
+              style={{
+                marginTop: 14,
                 display: 'grid',
                 gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
                 gap: 12,
-                padding: 12,
-                borderRadius: 6,
-                background: 'var(--tea-color-bg-secondary-default)',
               }}
             >
-              <div>
-                <Text theme="weak" style={{ fontSize: 12, display: 'block' }}>上次備份狀態</Text>
-                <Text style={{ fontWeight: 600 }}>
-                  {!status?.last_run
-                    ? '尚無紀錄'
-                    : status.last_run.status === 'success'
-                      ? `成功 (${status.last_run.trigger})`
-                      : status.last_run.status === 'running'
-                        ? '執行中'
-                        : `失敗 (${status.last_run.trigger})`}
+              <div
+                style={{
+                  padding: '12px 14px',
+                  borderRadius: 8,
+                  border: '1px solid var(--tea-color-border-primary-default)',
+                  background: 'var(--tea-color-bg-primary-default)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  justifyContent: 'space-between',
+                  gap: 6,
+                }}
+              >
+                <Text theme="weak" style={{ fontSize: 12 }}>
+                  上次備份狀態
+                </Text>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, minHeight: 24 }}>
+                  {!status?.last_run ? (
+                    <Text style={{ fontSize: 14, fontWeight: 600 }}>尚無紀錄</Text>
+                  ) : (
+                    <>
+                      <Tag
+                        theme={
+                          status.last_run.status === 'success'
+                            ? 'success'
+                            : status.last_run.status === 'running'
+                              ? 'warning'
+                              : 'danger'
+                        }
+                        variant="soft"
+                        size="sm"
+                      >
+                        {status.last_run.status === 'success'
+                          ? '成功'
+                          : status.last_run.status === 'running'
+                            ? '執行中'
+                            : '失敗'}
+                      </Tag>
+                      {triggerLabel && (
+                        <Text theme="weak" style={{ fontSize: 12 }}>
+                          {triggerLabel}
+                        </Text>
+                      )}
+                    </>
+                  )}
+                </div>
+              </div>
+
+              <div
+                style={{
+                  padding: '12px 14px',
+                  borderRadius: 8,
+                  border: '1px solid var(--tea-color-border-primary-default)',
+                  background: 'var(--tea-color-bg-primary-default)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  justifyContent: 'space-between',
+                  gap: 6,
+                }}
+              >
+                <Text theme="weak" style={{ fontSize: 12 }}>
+                  上次完成時間
+                </Text>
+                <Text style={{ fontSize: 14, fontWeight: 600, lineHeight: '24px' }}>
+                  {formatDateTime(status?.last_run?.finished_at)}
                 </Text>
               </div>
-              <div>
-                <Text theme="weak" style={{ fontSize: 12, display: 'block' }}>上次完成時間</Text>
-                <Text style={{ fontWeight: 600 }}>{formatDateTime(status?.last_run?.finished_at)}</Text>
-              </div>
-              <div>
-                <Text theme="weak" style={{ fontSize: 12, display: 'block' }}>備份檔名与大小</Text>
-                <Text style={{ fontWeight: 600 }}>
-                  {status?.last_run?.file_name
-                    ? `${status.last_run.file_name} (${formatBytes(status.last_run.size_bytes)})`
-                    : '-'}
+
+              <div
+                style={{
+                  padding: '12px 14px',
+                  borderRadius: 8,
+                  border: '1px solid var(--tea-color-border-primary-default)',
+                  background: 'var(--tea-color-bg-primary-default)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  justifyContent: 'space-between',
+                  gap: 6,
+                }}
+              >
+                <Text theme="weak" style={{ fontSize: 12 }}>
+                  下次排程時間 ({status?.timezone || 'Asia/Taipei'})
+                </Text>
+                <Text style={{ fontSize: 14, fontWeight: 600, lineHeight: '24px' }}>
+                  {status?.enabled ? formatDateTime(status?.next_scheduled_at) : '未啟用自動排程'}
                 </Text>
               </div>
-              <div>
-                <Text theme="weak" style={{ fontSize: 12, display: 'block' }}>下次排程時間 ({status?.timezone || 'Asia/Taipei'})</Text>
-                <Text style={{ fontWeight: 600 }}>{formatDateTime(status?.next_scheduled_at)}</Text>
+
+              <div
+                style={{
+                  padding: '12px 14px',
+                  borderRadius: 8,
+                  border: '1px solid var(--tea-color-border-primary-default)',
+                  background: 'var(--tea-color-bg-primary-default)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  justifyContent: 'space-between',
+                  gap: 6,
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
+                  <Text theme="weak" style={{ fontSize: 12 }}>
+                    最近備份檔案
+                  </Text>
+                  {status?.last_run?.size_bytes !== undefined && (
+                    <Tag theme="default" variant="soft" size="sm">
+                      {formatBytes(status.last_run.size_bytes)}
+                    </Tag>
+                  )}
+                </div>
+                <Text
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 600,
+                    lineHeight: '20px',
+                    wordBreak: 'break-all',
+                    fontFamily: 'var(--font-mono, monospace)',
+                  }}
+                >
+                  {status?.last_run?.file_name || '尚無備份檔案'}
+                </Text>
               </div>
             </div>
           </Card.Body>
@@ -352,16 +490,16 @@ export function BackupSettingsPage() {
         {/* 2. 設定或更改加密密碼 */}
         <Card>
           <Card.Body title={status?.has_password ? `更改備份加密密碼（目前版本 v${status.key_version}）` : '步驟 1：設定備份加密密碼'}>
-            <Alert type="warning" style={{ marginBottom: 12 }}>
+            <Alert type="warning" style={{ marginBottom: 14 }}>
               伺服器<strong>不會儲存您的密碼或私鑰</strong>（僅儲存 scrypt 鹽值與推導出的 X25519 公鑰）。
               <strong>忘記密碼等於無法還原任何備份，沒有後門。</strong>
               更改密碼後版本號會加一，舊備份仍須使用當時對應版本的舊密碼解開。
             </Alert>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 12 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 14 }}>
               {status?.has_password && (
                 <div>
-                  <Text theme="label" style={{ display: 'block', marginBottom: 4 }}>目前舊密碼</Text>
+                  <Text theme="label" style={{ display: 'block', marginBottom: 6 }}>目前舊密碼</Text>
                   <Input
                     type="password"
                     size="full"
@@ -372,7 +510,7 @@ export function BackupSettingsPage() {
                 </div>
               )}
               <div>
-                <Text theme="label" style={{ display: 'block', marginBottom: 4 }}>
+                <Text theme="label" style={{ display: 'block', marginBottom: 6 }}>
                   {status?.has_password ? '新密碼（至少 12 字元）' : '備份密碼（至少 12 字元）'}
                 </Text>
                 <Input
@@ -384,7 +522,7 @@ export function BackupSettingsPage() {
                 />
               </div>
               <div>
-                <Text theme="label" style={{ display: 'block', marginBottom: 4 }}>再次輸入密碼確認</Text>
+                <Text theme="label" style={{ display: 'block', marginBottom: 6 }}>再次輸入密碼確認</Text>
                 <Input
                   type="password"
                   size="full"
@@ -395,7 +533,7 @@ export function BackupSettingsPage() {
               </div>
             </div>
 
-            <div style={{ marginTop: 12 }}>
+            <div style={{ marginTop: 14 }}>
               <Button
                 type="primary"
                 disabled={savingPassword || !newPassword || !confirmPassword}
@@ -410,14 +548,14 @@ export function BackupSettingsPage() {
         {/* 3. Google Drive 授權、路徑與保留策略 */}
         <Card>
           <Card.Body title="步驟 2：Google Drive 裝置授權、路徑與保留策略">
-            <Text theme="weak" style={{ display: 'block', marginBottom: 12, fontSize: 12 }}>
+            <Text theme="weak" style={{ display: 'block', marginBottom: 14, fontSize: 12, lineHeight: '18px' }}>
               請先在 Google Cloud Console 建立一個類型為「電視與受限輸入裝置 (TVs and Limited Input devices)」的 OAuth 2.0 用戶端，
               並啟用 Google Drive API。授權範圍僅使用 <code>drive.file</code>（只能存取本程式建立的備份檔）。
             </Text>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 12 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 14 }}>
               <div>
-                <Text theme="label" style={{ display: 'block', marginBottom: 4 }}>Google OAuth Client ID</Text>
+                <Text theme="label" style={{ display: 'block', marginBottom: 6 }}>Google OAuth Client ID</Text>
                 <Input
                   size="full"
                   placeholder="xxxx.apps.googleusercontent.com"
@@ -426,7 +564,7 @@ export function BackupSettingsPage() {
                 />
               </div>
               <div>
-                <Text theme="label" style={{ display: 'block', marginBottom: 4 }}>
+                <Text theme="label" style={{ display: 'block', marginBottom: 6 }}>
                   Google OAuth Client Secret {status?.drive_has_client_secret ? '（已儲存，留空則保留原值）' : ''}
                 </Text>
                 <Input
@@ -438,7 +576,7 @@ export function BackupSettingsPage() {
                 />
               </div>
               <div>
-                <Text theme="label" style={{ display: 'block', marginBottom: 4 }}>Google Drive 備份資料夾路徑</Text>
+                <Text theme="label" style={{ display: 'block', marginBottom: 6 }}>Google Drive 備份資料夾路徑</Text>
                 <Input
                   size="full"
                   placeholder="backup/personal_memory_hub/"
@@ -447,7 +585,7 @@ export function BackupSettingsPage() {
                 />
               </div>
               <div>
-                <Text theme="label" style={{ display: 'block', marginBottom: 4 }}>每日排程時間（UTC+8 小時，0–23）</Text>
+                <Text theme="label" style={{ display: 'block', marginBottom: 6 }}>每日排程時間（UTC+8 小時，0–23）</Text>
                 <Input
                   size="full"
                   value={String(scheduleHour)}
@@ -459,32 +597,50 @@ export function BackupSettingsPage() {
               </div>
             </div>
 
-            <div style={{ marginTop: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <Switch
-                  value={Boolean(status?.delete_older_than_month)}
-                  disabled={savingSettings}
-                  onChange={(v) => void handleToggleRetention(v)}
-                />
-                <Text>刪除超過一個月（30 天）的舊備份（同時套用於本機與 Google Drive，僅刪符合命名規則的檔案）</Text>
+            {/* 保留策略獨立區塊 */}
+            <div
+              style={{
+                marginTop: 14,
+                padding: '12px 14px',
+                borderRadius: 8,
+                border: '1px solid var(--tea-color-border-primary-default)',
+                background: 'var(--tea-color-bg-secondary-default)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 12,
+              }}
+            >
+              <div>
+                <Text style={{ fontSize: 13, fontWeight: 600, display: 'block' }}>
+                  自動清理超過 30 天的舊備份
+                </Text>
+                <Text theme="weak" style={{ fontSize: 12, marginTop: 2, display: 'block' }}>
+                  同時套用於本機與 Google Drive 備份資料夾，僅刪除符合 <code>pmh-backup-*.tar.gz.age</code> 命名規則的備份檔。
+                </Text>
               </div>
+              <Switch
+                value={Boolean(status?.delete_older_than_month)}
+                disabled={savingSettings}
+                onChange={(v) => void handleToggleRetention(v)}
+              />
+            </div>
 
-              <div style={{ display: 'flex', gap: 8 }}>
-                <Button
-                  type="weak"
-                  disabled={savingSettings}
-                  onClick={() => void handleSaveDriveSettings()}
-                >
-                  儲存設定
-                </Button>
-                <Button
-                  type="primary"
-                  disabled={startingAuth || (!clientId.trim() && !status?.drive_client_id)}
-                  onClick={() => void handleStartGoogleAuth()}
-                >
-                  {startingAuth ? '正在取得授權碼…' : status?.drive_authorized ? '重新連結 Google Drive' : '開始 Google 裝置授權'}
-                </Button>
-              </div>
+            <div style={{ marginTop: 14, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+              <Button
+                type="weak"
+                disabled={savingSettings}
+                onClick={() => void handleSaveDriveSettings()}
+              >
+                儲存路徑與排程設定
+              </Button>
+              <Button
+                type="primary"
+                disabled={startingAuth || (!clientId.trim() && !status?.drive_client_id)}
+                onClick={() => void handleStartGoogleAuth()}
+              >
+                {startingAuth ? '正在取得授權碼…' : status?.drive_authorized ? '重新連結 Google Drive' : '開始 Google 裝置授權'}
+              </Button>
             </div>
 
             {deviceSession && (
@@ -492,7 +648,7 @@ export function BackupSettingsPage() {
                 style={{
                   marginTop: 16,
                   padding: 14,
-                  borderRadius: 6,
+                  borderRadius: 8,
                   border: '1px solid var(--tea-color-border-primary-default)',
                   background: 'var(--tea-color-bg-brand-lighten-default)',
                 }}
@@ -527,7 +683,7 @@ export function BackupSettingsPage() {
         {/* 4. 還原說明 */}
         <Card>
           <Card.Body title="還原說明（支援 Windows 長路徑）">
-            <Text theme="weak" style={{ display: 'block', marginBottom: 8, fontSize: 12 }}>
+            <Text theme="weak" style={{ display: 'block', marginBottom: 8, fontSize: 12, lineHeight: '18px' }}>
               備份檔使用 X25519 + AES-256-GCM 加密（檔頭內含 scrypt 鹽值與參數，即使本機資料庫完全遺失也能獨立解開）。
               請注意檔名上的版本號（例如 <code>-v{keyVer}</code>），還原時必須輸入對應版本的密碼：
             </Text>
