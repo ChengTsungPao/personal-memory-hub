@@ -96,7 +96,7 @@ export async function handleV3BackupRoute(
       }
       case "/password": {
         const result = await engine.setOrChangePassword({
-          userId: authResult.ctx.user.user_id,
+          userId: authResult.ctx.userId ?? "system_admin",
           oldPassword: typeof body.old_password === "string" ? body.old_password : undefined,
           newPassword: typeof body.new_password === "string" ? body.new_password : "",
           confirmPassword: typeof body.confirm_password === "string" ? body.confirm_password : "",
