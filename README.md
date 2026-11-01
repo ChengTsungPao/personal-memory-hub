@@ -92,7 +92,16 @@ Memory Hub coordinates the following local and external services:
    - **Used by `MemoryKnowledge` (`:8424`) Connectors**: Opt-in incremental sync ([`MemoryKnowledge/src/connectors/`](./MemoryKnowledge/src/connectors/)). Uses a Notion Internal Integration Token (`ntn_...`, configurable in the Panel UI at `:8125` and persisted in SQLite `knowledge_connector`) to fetch shared pages, child pages, and database entries, convert Notion blocks to Markdown, and trigger incremental Wiki ingestion when `last_edited_time` or content SHA-256 changes.
 4. **Git Remotes (`https://...`)**
    - **Used by `MemoryKnowledge` (`:8424`) CodeGraph Engine**: Clones and incrementally fetches repositories to build a Tree-sitter symbol and call-graph index.
-5. **Optional Telemetry & Enterprise Integrations**
+5. **Google Drive API (`https://www.googleapis.com/drive/v3`) — Encrypted Daily Backups**
+   - **Used by `MemoryCore` (`:8420`) Backup Engine ([`MemoryCore/src/backup/`](./MemoryCore/src/backup/))**: Snapshots live SQLite databases (`vectors.db`, `metadata.db`, `knowledge.db`, per-wiki `index.db`), strips all third-party/personal tokens, encrypts the `.tar.gz` archive with an `scrypt`-derived **X25519 public key + AES-256-GCM** (`pmh-backup-YYYYMMDD-HHmm-v{N}.tar.gz.age`), and uploads to `backup/personal_memory_hub/` on Google Drive.
+   - **OAuth 2.0 App Registration (Google Auth Platform)**:
+     - **Display Name (Consent Screen)**: `Google Antigravity` (built-in Desktop OAuth client from the official Antigravity `gdrive` CLI plugin, or a custom Desktop OAuth client configured in `metadata.db`)
+     - **GCP Project Number**: `1071006060591` (Client ID prefix: `1071006060591-tmhssin2h21lcre235vtolojh4g403ep`)
+     - **Application Type**: `Desktop app` (1-click loopback redirect to `http://localhost:8125/`)
+     - **OAuth Scope**: `https://www.googleapis.com/auth/drive.file` (restricted strictly to backup files and folders created by this app)
+     - **Credential Storage**: Stored in local SQLite `metadata.db` (`meta_config_params`, `module = 'backup'`) — never stored in `.env` and automatically stripped from backup snapshots.
+     - **Manage / Revoke Authorization**: Visible under **[Google Account → Third-party apps & services](https://myaccount.google.com/connections)** as **`Google Antigravity`**.
+6. **Optional Telemetry & Enterprise Integrations**
    - **ClickHouse** (optional): Usage analytics and tool-call telemetry (`CLICKHOUSE_ENABLED=true`).
    - **LLM Proxy (`MemoryProxy :8096`)** (optional): Wire-protocol gateway for agents that do not use local hooks/MCP.
 
@@ -120,6 +129,10 @@ Memory Hub is a fork of [TencentDB-Agent-Memory](https://github.com/TencentCloud
 | `/api/v1/chat-memory/delete-block` | Panel | #25 | Delete a session block with its conversations and memories; a live session gets a new empty block on its next turn. |
 | `/v3/chat-memory/rebuild` | MemoryCore | #30 | Queue L2, then L3, for every session of a block from its existing L1 (`dry_run` only lists them). For blocks whose L1 was moved in by `merge` / `split-sessions`, which otherwise never get L2/L3. Does **not** re-run L1. |
 | L1 scavenger (no API) | MemoryCore | #16, #32 | Every `TDAI_SCAVENGER_INTERVAL_MS` (default 30 min), re-extracts at `idle_only` priority the L0 messages behind each L1 cursor that no L1 generation log lists as input. Progress: `core-data/.metadata/l1-scavenger.json`; deleting a session's entry re-scans it. |
+| `/api/v1/chat-memory/reorder-blocks` | Panel | #34 | Persist manual drag-and-drop ordering of Chat Memory blocks across sessions via `meta_agents.metadata_json.sort_order`. |
+| `/v3/backup/{status,password,settings,google-auth/start,google-auth/callback,google-auth/poll,run}` | MemoryCore | #35 | Online SQLite backup + secret sanitization + X25519/AES-256-GCM encryption + 1-click Google Drive OAuth & upload + 30-day retention & password audit log. |
+| `/v3/internal/backup/snapshot` | MemoryKnowledge | #35 | Consistent online backup of `knowledge.db`, per-wiki `index.db`, and wiki Markdown files into shared staging for `MemoryCore`. |
+| `/api/v1/backup/*` | Panel | #35 | Admin-only BFF proxy for the Backup Settings page (`/#/backup`) and header failure badge. |
 
 ### 1. MCP Tools (`memorycore` stdio server — [`agents/claude-code/mcp/server.mjs`](./agents/claude-code/mcp/server.mjs)) ★
 
