@@ -415,6 +415,8 @@ already in context.
 | `hooks/memory-capture.mjs` | `Stop` → append the turn to this session's block, print the binding |
 | `hooks/memory-recall.mjs` | `SessionStart` → bind the session block, inject L3 + L2 index of the other blocks under its repos |
 | `hooks/memory-command.mjs` | `UserPromptSubmit` → `mem: repo` / `mem: repo add` / `mem: repo rm` |
+| `skills/memory-hub-repo/` | Skill: run `mem: repo` for the user when the hook missed it (e.g. a leading `- `) or they asked in plain words. Claude Code only (needs `CLAUDE_CODE_SESSION_ID`) |
+| `skills/memory-hub-recall/` | Skill: read a repo's past memory through the MCP tools, always passing `agent` |
 | `mcp/server.mjs` | MCP stdio server: search, scenario read/write, core read/write |
 | `lib/config.mjs` | Environment loading, isolation fields |
 | `lib/session.mjs` | Session blocks: repo scan, binding, recall across blocks |
