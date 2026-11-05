@@ -303,11 +303,19 @@ export async function extractL1Memories(params: {
     extracted = extracted.slice(0, maxMemoriesPerSession);
   }
 
-  // Assign temporary IDs to extracted memories (needed for batch dedup)
-  const memoriesWithIds = extracted.map((m) => ({
-    ...m,
-    record_id: generateMemoryId(),
-  }));
+  // Assign temporary IDs to extracted memories (needed for batch dedup), and the time of the newest
+  // source message (else of the slice), so dedup can tell a backfilled old conversation from a new one.
+  const messageTime = new Map(messages.map((msg) => [msg.id, msg.timestamp]));
+  const sliceTime = Math.max(...newMessages.map((msg) => msg.timestamp));
+  const memoriesWithIds = extracted.map((m) => {
+    const times = m.source_message_ids.map((id) => messageTime.get(id)).filter((t): t is number => typeof t === "number");
+    const t = times.length > 0 ? Math.max(...times) : sliceTime;
+    return {
+      ...m,
+      record_id: generateMemoryId(),
+      ...(Number.isFinite(t) ? { source_time: new Date(t).toISOString() } : {}),
+    };
+  });
 
   // Step 2: Batch Conflict Detection + Write
   let storedRecords: MemoryRecord[];

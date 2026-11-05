@@ -109,6 +109,9 @@ export interface ExtractedMemory {
   metadata: EpisodicMetadata | Record<string, never>;
   /** Scene name this memory was extracted in */
   scene_name: string;
+  /** ISO time of the newest conversation message it came from; lets dedup refuse to let an old (backfilled)
+   * conversation overwrite a newer memory. Not persisted. */
+  source_time?: string;
 }
 
 export type DedupAction = "store" | "update" | "merge" | "skip";
