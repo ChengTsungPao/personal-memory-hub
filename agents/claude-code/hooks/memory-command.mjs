@@ -13,7 +13,7 @@
  * {decision, reason} out), so both register this script.
  */
 
-import { openSession, editRepos, describeBinding } from "../lib/session.mjs";
+import { openSession, editRepos, describeBinding, detectHarness } from "../lib/session.mjs";
 
 const COMMAND = /^\s*mem:\s*repo(?:\s+(add|rm)\b)?\s*(.*)$/is;
 
@@ -36,7 +36,7 @@ async function main() {
   const reply = (reason) => process.stdout.write(JSON.stringify({ decision: "block", reason }));
   const [, op, arg] = match;
   try {
-    const { cfg, binding, skip } = await openSession(payload.session_id, payload.cwd);
+    const { cfg, binding, skip } = await openSession(payload.session_id, payload.cwd, detectHarness(payload));
     if (skip || !binding) return reply("這個 session 沒有自己的記憶塊（沒有 admin key，或設了 TDAI_AGENT_ID）");
     const result = op ? await editRepos(cfg, payload.session_id, payload.cwd, op.toLowerCase(), arg) : binding;
     reply(describeBinding(result));
