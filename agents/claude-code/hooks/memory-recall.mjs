@@ -24,7 +24,7 @@
 
 import { debugLog } from "../lib/config.mjs";
 import { CoreClient } from "../lib/core-client.mjs";
-import { describeBinding, openSession, recallMemory } from "../lib/session.mjs";
+import { describeBinding, detectHarness, openSession, recallMemory } from "../lib/session.mjs";
 
 /** Skip the reload when a session is merely continuing. */
 const SKIP_SOURCES = new Set(["compact"]);
@@ -93,7 +93,7 @@ async function main() {
   }
 
   // Binds this session's memory block to its repos (lib/session.mjs); the user sees the binding.
-  const { cfg, binding } = await openSession(payload.session_id, payload.cwd);
+  const { cfg, binding } = await openSession(payload.session_id, payload.cwd, detectHarness(payload));
   const notice = binding ? describeBinding(binding) : "";
 
   if (SKIP_SOURCES.has(payload.source)) {

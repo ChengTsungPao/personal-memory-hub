@@ -58,7 +58,7 @@ async function main() {
 
   const sessionId = payload.session_id ?? payload.thread_id;
   // This session's own memory block, bound to its repos (claude-code/lib/session.mjs).
-  const { cfg, binding, skip } = await openSession(sessionId, payload.cwd);
+  const { cfg, binding, skip } = await openSession(sessionId, payload.cwd, "Codex");
   const transcriptPath = payload.transcript_path ?? findTranscript(sessionId);
   if (!sessionId || !transcriptPath || !fs.existsSync(transcriptPath)) {
     return debugLog(cfg, "payload missing session_id or Codex transcript");

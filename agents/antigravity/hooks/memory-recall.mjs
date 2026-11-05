@@ -73,7 +73,7 @@ async function main() {
 
   // Binds this conversation's memory block to its repos; L3 and the L2 index come from the other
   // sessions' blocks under those repos (claude-code/lib/session.mjs).
-  const { cfg, binding } = await openSession(payload.conversationId, payload.workspacePaths?.[0]);
+  const { cfg, binding } = await openSession(payload.conversationId, payload.workspacePaths?.[0], "Antigravity");
   const client = new CoreClient(cfg);
 
   const [memoryResult, wikiResult] = await Promise.allSettled([recallMemory(cfg, binding), client.listWikis()]);

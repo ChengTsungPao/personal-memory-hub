@@ -256,6 +256,11 @@ hooks use that as follows (`lib/session.mjs`, only when `TDAI_AGENT_ID` is not s
   session's memory block. Its metadata is `{"kind":"session","session_id":…,"cwd":…,"repos":[…]}`,
   so the session id → block mapping lives on the server: a session always finds its block again,
   also with the local cache gone. `repos` tags the block with the repos it belongs to.
+- **Name.** `[harness] repos day`, e.g. `[Claude Code] llm-gateway + personal-memory-hub 11/05`
+  (`New-chat` in place of the repos when there is none). The harness (`Claude Code`, `Codex`, `Antigravity`) and the
+  start day are kept in the metadata (`harness`, `started`). Codex runs the Claude Code recall and
+  command hooks too, so those tell it apart by its transcript path (`~/.codex/…/rollout-*.jsonl`) or
+  its UUIDv7 thread id. The name follows the repos until it is renamed in the panel (`custom_name`).
 - **Repos by root commit hash.** A repo is identified only by its root commit
   (`git rev-list --max-parents=0 HEAD`, the first when sorted): worktrees and other clones of a repo
   share it. Each repo has one *repo agent* (`{"kind":"repo","root_commit":…}`), named after the main

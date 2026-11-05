@@ -197,10 +197,30 @@ async function findOrCreate(cfg, { cacheId, match, name, metadata, listAgents })
 // Binding
 // ============================
 
-/** A block is named after its repos, e.g. "llm-gateway + personal-memory-hub · d421a1be". */
-function sessionName(repos, sessionId) {
+export const HARNESSES = ["Claude Code", "Codex", "Antigravity"];
+
+/**
+ * Which harness ran a Claude Code-shaped hook. Codex registers the Claude Code recall and command
+ * hooks too, so tell it apart by its transcript (`~/.codex/sessions/.../rollout-*.jsonl`) or, when
+ * the payload has none, by its thread id: a UUIDv7, where Claude Code session ids are UUIDv4.
+ */
+export function detectHarness(payload) {
+  const transcript = String(payload?.transcript_path ?? "").replace(/\\/g, "/");
+  if (/\/\.codex\/|\/rollout-[^/]*\.jsonl$/.test(transcript)) return "Codex";
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-/i.test(String(payload?.session_id ?? payload?.thread_id ?? ""))) return "Codex";
+  return "Claude Code";
+}
+
+/** MM/DD in local time. */
+const day = (iso) => {
+  const d = new Date(iso);
+  return `${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")}`;
+};
+
+/** A block is named after its harness, repos and start day, e.g. "[Claude Code] llm-gateway + personal-memory-hub 11/05". */
+function sessionName(repos, { harness, started }) {
   const names = repos.map((r) => r.name).join(" + ") || NEW_CHAT_NAME;
-  return `${names} · ${sessionId.slice(0, 8)}`;
+  return `[${harness ?? HARNESSES[0]}] ${names} ${day(started)}`;
 }
 
 /**
@@ -213,8 +233,9 @@ function sessionName(repos, sessionId) {
  * an edit made in the panel or a lost local cache is picked up. Only bindings to repo agents and
  * New-chat are managed here; a binding to any other agent (made in the panel) is left alone.
  * `edit(added, removed)` optionally returns new manual edits before the binding is applied.
+ * `harness` (one of HARNESSES) is kept on the block the first time it is known, for its name.
  */
-export async function bindSession(cfg, sessionId, cwd, edit) {
+export async function bindSession(cfg, sessionId, cwd, edit, harness) {
   const state = readState(cfg, sessionId);
   state.repoAgents ??= {};
 
@@ -222,12 +243,13 @@ export async function bindSession(cfg, sessionId, cwd, edit) {
   let listed;
   const listAgents = async () => (listed ??= await listTeamAgents(cfg));
 
+  const now = new Date().toISOString();
   const session = await findOrCreate(cfg, {
     cacheId: state.sessionAgentId,
     // A block merged into another (panel merge) lists the merged session ids: keep writing there.
     match: (m) => m.kind === "session" && (m.session_id === sessionId || (m.merged_sessions ?? []).includes(sessionId)),
-    name: sessionName([], sessionId),
-    metadata: { kind: "session", session_id: sessionId, cwd: cwd ?? "", repos: [], added: [], removed: [] },
+    name: sessionName([], { harness, started: now }),
+    metadata: { kind: "session", session_id: sessionId, cwd: cwd ?? "", repos: [], added: [], removed: [], ...(harness ? { harness } : {}), started: now },
     listAgents,
   });
   state.sessionAgentId = session.agent_id;
@@ -323,9 +345,19 @@ export async function bindSession(cfg, sessionId, cwd, edit) {
 
   // Tag the block with its repos (the panel shows them) and keep the manual edits with it.
   const tags = [...repos.values()];
-  const next = { ...sessionMeta, cwd: cwd ?? sessionMeta.cwd ?? "", repos: tags, added, removed };
+  // A block made before names had a harness and a day gets them now: the day it was created.
+  const started = sessionMeta.started ?? (/^\d{4}-\d\d-\d\dT/.test(session.created_at ?? "") ? session.created_at : now);
+  const next = {
+    ...sessionMeta,
+    cwd: cwd ?? sessionMeta.cwd ?? "",
+    repos: tags,
+    added,
+    removed,
+    ...((sessionMeta.harness ?? harness) ? { harness: sessionMeta.harness ?? harness } : {}),
+    started,
+  };
   // A name set by hand (metadata custom_name) is kept; otherwise the name follows the repos.
-  const name = sessionMeta.custom_name ? session.name : sessionName(tags, sessionId);
+  const name = sessionMeta.custom_name ? session.name : sessionName(tags, next);
   if (JSON.stringify(next) !== JSON.stringify(sessionMeta) || name !== session.name) {
     await meta(cfg, "agent/update", { agent_id: session.agent_id, name, metadata_json: JSON.stringify(next) });
   }
@@ -338,12 +370,13 @@ export async function bindSession(cfg, sessionId, cwd, edit) {
  * Prepare a hook call: load the config and, unless TDAI_AGENT_ID pins one agent, bind this
  * session's memory block and point `cfg.agentId` at it. `binding` is null in the pinned mode;
  * `skip` is set when the block cannot be made (no admin key) and nothing should be written.
+ * `harness` names the block (see bindSession).
  */
-export async function openSession(sessionId, cwd) {
+export async function openSession(sessionId, cwd, harness) {
   if (process.env.TDAI_AGENT_ID) return { cfg: await loadConfig(cwd), binding: null };
   const cfg = await loadConfig(cwd, { projectAgent: false });
   if (!cfg.adminKey || !sessionId) return { cfg, binding: null, skip: true };
-  const binding = await bindSession(cfg, sessionId, cwd);
+  const binding = await bindSession(cfg, sessionId, cwd, undefined, harness);
   cfg.agentId = binding.sessionAgentId;
   return { cfg, binding };
 }

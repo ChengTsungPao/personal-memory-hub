@@ -5,7 +5,7 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { bindSession, browserUrl, editRepos, findRepos, repoAt } from "./session.mjs";
+import { bindSession, browserUrl, detectHarness, editRepos, findRepos, repoAt } from "./session.mjs";
 
 const git = (cwd, ...args) => execFileSync("git", args, { cwd, stdio: "pipe" }).toString().trim();
 
@@ -131,8 +131,9 @@ function fakeMemoryCore() {
 const boundTo = (sessionAgentId) =>
   [...bindings]
     .filter((b) => b.endsWith(`|chat_memory-T-${sessionAgentId}`))
-    .map((b) => agents.get(b.split("|")[0]).name)
-    .filter((n) => !n.includes("·"))
+    .map((b) => agents.get(b.split("|")[0]))
+    .filter((a) => JSON.parse(a.metadata_json || "{}").kind !== "session")
+    .map((a) => a.name)
     .sort();
 const repoTags = (sessionAgentId) => JSON.parse(agents.get(sessionAgentId).metadata_json).repos.map((r) => r.name);
 
@@ -161,7 +162,7 @@ test("the session finds its block from the server even without the local cache",
   const first = await bindSession(cfg, "sess-2", root);
   const again = await bindSession({ ...cfg, stateDir: tmp() }, "sess-2", root);
   assert.equal(again.sessionAgentId, first.sessionAgentId);
-  assert.equal([...agents.values()].filter((a) => a.name.endsWith("· sess-2")).length, 1);
+  assert.equal([...agents.values()].filter((a) => JSON.parse(a.metadata_json || "{}").session_id === "sess-2").length, 1);
   rmSync(root, { recursive: true, force: true });
 });
 
@@ -236,14 +237,38 @@ test("manual edits are kept on the server with the block", async () => {
   assert.deepEqual(boundTo(sessionAgentId), ["a"]);
 });
 
-test("a block is named after its repos and renamed when they change", async () => {
+const today = (d = new Date()) => {
+  return `${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")}`;
+};
+
+test("a block is named after its harness, repos and start day, and renamed when the repos change", async () => {
   const root = tmp();
-  const { sessionAgentId } = await bindSession(cfg, "sess-9abcdef", root);
-  assert.equal(agents.get(sessionAgentId).name, "New-chat · sess-9ab");
+  const { sessionAgentId } = await bindSession(cfg, "sess-9abcdef", root, undefined, "Codex");
+  assert.equal(agents.get(sessionAgentId).name, `[Codex] New-chat ${today()}`);
   makeRepo(path.join(root, "a"));
   makeRepo(path.join(root, "b"));
-  await bindSession(cfg, "sess-9abcdef", root);
-  assert.equal(agents.get(sessionAgentId).name, "a + b · sess-9ab");
+  await bindSession(cfg, "sess-9abcdef", root); // a hook that does not know the harness keeps it
+  assert.equal(agents.get(sessionAgentId).name, `[Codex] a + b ${today()}`);
+});
+
+test("a block made before harness names gets one, dated the day it was created", async () => {
+  const root = makeRepo(path.join(tmp(), "a"));
+  const created = await (await fetch("http://core/v3/meta/agent/create", {
+    method: "POST",
+    body: JSON.stringify({ name: "a · sess-old", metadata_json: JSON.stringify({ kind: "session", session_id: "sess-old", repos: [], added: [], removed: [] }) }),
+  })).json();
+  agents.get(created.data.agent_id).created_at = "2026-10-01T08:00:00.000Z";
+  await bindSession(cfg, "sess-old", root, undefined, "Claude Code");
+  const block = agents.get(created.data.agent_id);
+  assert.equal(block.name, `[Claude Code] a ${today(new Date("2026-10-01T08:00:00.000Z"))}`);
+  assert.equal(JSON.parse(block.metadata_json).harness, "Claude Code");
+});
+
+test("Codex is told apart from Claude Code in the hooks they share", () => {
+  assert.equal(detectHarness({ session_id: "d421a1be-fb4b-42f3-82d7-09a40c18d219", transcript_path: "C:\\Users\\x\\.claude\\projects\\p\\d421a1be.jsonl" }), "Claude Code");
+  assert.equal(detectHarness({ session_id: "01a16da1-94ad-7590-8e6e-c6055395f939" }), "Codex");
+  assert.equal(detectHarness({ session_id: "x", transcript_path: "/home/u/.codex/sessions/2026/11/05/rollout-2026-11-05T10-00-00-x.jsonl" }), "Codex");
+  assert.equal(detectHarness({}), "Claude Code");
 });
 
 test("a name set by hand is kept when the repos change", async () => {

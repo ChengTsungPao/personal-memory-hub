@@ -20,7 +20,7 @@
 import { debugLog } from "../lib/config.mjs";
 import { CoreClient } from "../lib/core-client.mjs";
 import { readNewMessages, readCursor, writeCursor } from "../lib/transcript.mjs";
-import { describeBinding, openSession } from "../lib/session.mjs";
+import { describeBinding, detectHarness, openSession } from "../lib/session.mjs";
 
 async function readStdin() {
   const chunks = [];
@@ -41,7 +41,7 @@ async function main() {
 
   const sessionId = payload.session_id;
   const transcriptPath = payload.transcript_path;
-  const { cfg, binding, skip } = await openSession(sessionId, payload.cwd);
+  const { cfg, binding, skip } = await openSession(sessionId, payload.cwd, detectHarness(payload));
   if (!sessionId || !transcriptPath) {
     return debugLog(cfg, "payload missing session_id or transcript_path");
   }

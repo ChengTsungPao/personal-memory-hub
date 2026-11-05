@@ -39,7 +39,7 @@ async function main() {
   const sessionId = payload.conversationId;
   const transcriptPath = payload.transcriptPath;
   // This conversation's own memory block, bound to its repos (claude-code/lib/session.mjs).
-  const { cfg, skip } = await openSession(sessionId, payload.workspacePaths?.[0]);
+  const { cfg, skip } = await openSession(sessionId, payload.workspacePaths?.[0], "Antigravity");
   if (!sessionId || !transcriptPath) {
     return debugLog(cfg, "payload missing conversationId or transcriptPath");
   }
