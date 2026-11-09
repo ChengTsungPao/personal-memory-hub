@@ -37,6 +37,9 @@ import { composeMemorySystemPrompt } from "../memory-prompt/composer.js";
 
 const TAG = "[memory-tdai] [extractor]";
 
+/** A scene file whose content passes this many characters is asked to be split (prompt target: 1,500). */
+export const SPLIT_SCENE_CHARS = 4000;
+
 type ExtractorLogger = Logger;
 
 export interface ExtractionResult {
@@ -222,6 +225,15 @@ export class SceneExtractor {
         preExtractRaw.set(e.filename, raw);
         preExtractCreated.set(e.filename, block.meta.created);
       } catch { /* non-fatal */ }
+    }
+
+    // A small model keeps choosing UPDATE and grows one file past the 1,500-character rule (one rebuild
+    // put 153 job-search memories into a single 12 KB file). Name such files and ask for a split.
+    const oversized = [...preExtractContent].filter(([, c]) => c.length > SPLIT_SCENE_CHARS).map(([f]) => f);
+    if (oversized.length > 0 && sceneCount < this.maxScenes - 1) {
+      const splitNote = `以下場景檔已超過 ${SPLIT_SCENE_CHARS} 字，本次**必須先把它拆成 2–3 個主題更窄的場景檔**（各自 write 新檔，再把原檔寫成 [DELETED]），然後再處理新記憶：\n${oversized.map((f) => `- \`${f}\``).join("\n")}`;
+      sceneCountWarning = sceneCountWarning ? `${sceneCountWarning}\n\n${splitNote}` : splitNote;
+      this.logger?.info(`${TAG} extract() asking to split oversized scene(s): ${oversized.join(", ")}`);
     }
 
     // Phase 3: Build prompt
