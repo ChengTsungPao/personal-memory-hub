@@ -13,64 +13,64 @@ import type { MemoryRecord, ExtractedMemory } from "../record/l1-writer.js";
 // System Prompt
 // ============================
 
-export const CONFLICT_DETECTION_SYSTEM_PROMPT = `你是记忆冲突检测器。批量比较多条【新记忆】与【统一候选记忆池】中的已有记忆，逐条决定如何处理。
+export const CONFLICT_DETECTION_SYSTEM_PROMPT = `你是記憶衝突檢測器。批次比較多條【新記憶】與【統一候選記憶池】中的已有記憶，逐條決定如何處理。
 
-**输出语言**：\`merged_content\` 使用与候选池中已有记忆相同的语言；JSON 字段名、枚举值、record_id、ISO 时间戳保持英文。
+**輸出語言**：\`merged_content\` 使用與候選池中已有記憶相同的語言；JSON 欄位名、列舉值、record_id、ISO 時間戳保持英文。
 
-## 核心规则
+## 核心規則
 
-- **跨 type 合并**：不同 type（persona / episodic / instruction / work_fact / work_task / work_method / work_artifact）的记忆如果语义上描述同一事实/事件，**可以合并**。
-- **多对多合并**：一条新记忆可以同时替换/合并候选池中的**多条**已有记忆（通过 target_ids 数组指定）。
-- 合并后你必须判断新记忆的最佳 type（merged_type）。
+- **跨 type 合併**：不同 type（persona / episodic / instruction / work_fact / work_task / work_method / work_artifact）的記憶如果語義上描述同一事實/事件，**可以合併**。
+- **多對多合併**：一條新記憶可以同時替換/合併候選池中的**多條**已有記憶（透過 target_ids 陣列指定）。
+- 合併後你必須判斷新記憶的最佳 type（merged_type）。
 
-## 判断逻辑
+## 判斷邏輯
 
-1. **分辨记忆性质**：
-   - **状态类**（persona/instruction）：偏好、特质、长期设定、相对稳定的事实、行为规则
-   - **事件类**（episodic）：一次性经历、带时间点的客观记录，建议合并同一件事的前因后果
+1. **分辨記憶性質**：
+   - **狀態類**（persona/instruction）：偏好、特質、長期設定、相對穩定的事實、行為規則
+   - **事件類**（episodic）：一次性經歷、帶時間點的客觀記錄，建議合併同一件事的前因後果
 
-2. **判断是否同一事实/事件**：主体相同、主题一致、时间接近、scene_name 相似
+2. **判斷是否同一事實/事件**：主體相同、主題一致、時間接近、scene_name 相似
 
-3. **选择动作**：
-   - "store"：视为新信息，新增当前记忆。
-   - "skip"：已有记忆更好，新记忆无增量或更模糊，忽略当前记忆。
-   - "update"：同一事实/事件，新记忆在内容或时间上更优（更具体、更晚或纠错），以新记忆为主覆盖旧记忆，可保留旧记忆中仍正确的细节。
-   - "merge"：同一事实或同一演化过程，多条记忆信息互补且不矛盾，合并成一条更完整记忆，信息尽量不冗余。
+3. **選擇動作**：
+   - "store"：視為新資訊，新增當前記憶。
+   - "skip"：已有記憶更好，新記憶無增量或更模糊，忽略當前記憶。
+   - "update"：同一事實/事件，新記憶在內容或時間上更優（更具體、更晚或糾錯），以新記憶為主覆蓋舊記憶，可保留舊記憶中仍正確的細節。
+   - "merge"：同一事實或同一演化過程，多條記憶資訊互補且不矛盾，合併成一條更完整記憶，資訊儘量不冗餘。
 
-4. **策略倾向**：
-   - 状态类：多条描述同一偏好/特质 → 倾向 merge；无增量 → skip；明确更新 → update
-   - 事件类：同一事件的前因后果、不同阶段 → 倾向 merge 为一条完整叙述；完全相同 → skip
-   - 跨类型示例：一条 episodic "用户在 2018 年开始做播客" + 一条 persona "用户有播客制作经验" → 可 merge 为一条 persona 或 episodic（取决于信息侧重）
+4. **策略傾向**：
+   - 狀態類：多條描述同一偏好/特質 → 傾向 merge；無增量 → skip；明確更新 → update
+   - 事件類：同一事件的前因後果、不同階段 → 傾向 merge 為一條完整敘述；完全相同 → skip
+   - 跨型別示例：一條 episodic "使用者在 2018 年開始做播客" + 一條 persona "使用者有播客製作經驗" → 可 merge 為一條 persona 或 episodic（取決於資訊側重）
 
-5. **timestamp 处理**：
-   - merge / update 时，merged_timestamps 应包含**所有相关记忆的时间戳并集**（去重排序）
-   - 这样可以保留事件发生的完整时间线
+5. **timestamp 處理**：
+   - merge / update 時，merged_timestamps 應包含**所有相關記憶的時間戳並集**（去重排序）
+   - 這樣可以保留事件發生的完整時間線
 
-## 输出格式
+## 輸出格式
 
-严格输出 JSON 数组，每个元素对应一条新记忆的决策。不输出任何其他内容：
+嚴格輸出 JSON 陣列，每個元素對應一條新記憶的決策。不輸出任何其他內容：
 
 [
   {
-    "record_id": "新记忆的 record_id",
+    "record_id": "新記憶的 record_id",
     "action": "store|update|skip|merge",
-    "target_ids": ["要删除的候选记忆 record_id 1", "record_id 2"],
-    "merged_content": "合并/更新后的记忆内容（merge/update 时必填）",
-    "merged_type": "合并后的最佳 type：persona|episodic|instruction|work_fact|work_task|work_method|work_artifact（merge/update 时必填）",
+    "target_ids": ["要刪除的候選記憶 record_id 1", "record_id 2"],
+    "merged_content": "合併/更新後的記憶內容（merge/update 時必填）",
+    "merged_type": "合併後的最佳 type：persona|episodic|instruction|work_fact|work_task|work_method|work_artifact（merge/update 時必填）",
     "merged_priority": 85,
-    "merged_timestamps": ["合并后的时间戳数组，包含所有新旧记忆时间戳的并集（merge/update 时必填）"]
+    "merged_timestamps": ["合併後的時間戳陣列，包含所有新舊記憶時間戳的並集（merge/update 時必填）"]
   }
 ]
 
-字段说明：
-- target_ids：要删除替换的旧记忆 ID **数组**（可以 1 条或多条）。store/skip 时省略或为空。
-- merged_content：merge/update 时的最终记忆文本。store/skip 时省略。
-- merged_type：merge/update 后记忆应归属的 type。根据合并后内容本质判断。
-- merged_priority：merge/update 后的新优先级（0-100 整数，merge/update 时必填）。合并后信息更完整、更确定，通常应**酌情提升** priority（例如两条 priority 70 的记忆合并后可提升到 80）。参考标准：80-100（核心特质/重要事件），60-79（一般偏好/普通活动），<60（次要信息）。
-- merged_timestamps：合并后的时间戳数组。收集新记忆 + 所有被合并旧记忆的时间戳，去重排序。`;
+欄位說明：
+- target_ids：要刪除替換的舊記憶 ID **陣列**（可以 1 條或多條）。store/skip 時省略或為空。
+- merged_content：merge/update 時的最終記憶文字。store/skip 時省略。
+- merged_type：merge/update 後記憶應歸屬的 type。根據合併後內容本質判斷。
+- merged_priority：merge/update 後的新優先順序（0-100 整數，merge/update 時必填）。合併後資訊更完整、更確定，通常應**酌情提升** priority（例如兩條 priority 70 的記憶合併後可提升到 80）。參考標準：80-100（核心特質/重要事件），60-79（一般偏好/普通活動），<60（次要資訊）。
+- merged_timestamps：合併後的時間戳陣列。收集新記憶 + 所有被合併舊記憶的時間戳，去重排序。`;
 
 // Work mode (Memory Hub). Traditional Chinese, and tuned against an offline replay of 20 real dedup jobs:
-// the upstream "倾向 update/merge" bias and "信息尽量不冗余" made merges drop identifiers, so this
+// the upstream "傾向 update/merge" bias and "資訊儘量不冗餘" made merges drop identifiers, so this
 // version stores by default, caps targets at 2, requires every detail to survive a merge, and uses
 // each new memory's source_time to stop a backfilled old conversation from overwriting newer memory.
 export const WORK_CONFLICT_DETECTION_SYSTEM_PROMPT = `你是團隊工作記憶衝突檢測器。批次比較多條【新記憶】與【統一候選記憶池】中的已有記憶，逐條決定如何處理。
@@ -90,7 +90,7 @@ export const WORK_CONFLICT_DETECTION_SYSTEM_PROMPT = `你是團隊工作記憶�
    - **工作事實類（work_fact）**：專案事實、需求、決策、狀態、風險、限制、實驗結果、客戶回饋。
    - **工作任務類（work_task）**：待辦、負責人、截止日、下一步計畫、任務狀態變化。
    - **工作方法類（work_method）**：SOP、禁忌、原則、經驗、設計思路、判斷標準、Agent 行為規則。
-   - **工作資產類（work_artifact）**：文件、PR、Issue、Prompt、報告、程式分支、設計稿、連結等。
+   - **工作資產類（work_artifact）**：檔案、PR、Issue、Prompt、報告、程式分支、設計稿、連結等。
 
 2. **判斷是否為同一工作對象／演進過程**：
    - 同一專案、模組、需求、任務、風險、決策、方法、資產，且 scene_name 或語意高度相似。

@@ -10,10 +10,10 @@ import type { SceneIndexEntry } from "./scene-index.js";
 
 const NAV_HEADER = "---\n## 🗺️ Scene Navigation (Scene Index)";
 
-const NAV_FOOTER_LOCAL = `📌 使用说明：
-- Path 是 scene block 的绝对路径，可直接使用 **read** 工具读取完整内容（参数: filePath）
-- 热度：该场景被记忆命中的累计次数，越高越重要
-- Summary：场景的核心要点摘要`;
+const NAV_FOOTER_LOCAL = `📌 使用說明：
+- Path 是 scene block 的絕對路徑，可直接使用 **read** 工具讀取完整內容（引數: filePath）
+- 熱度：該場景被記憶命中的累計次數，越高越重要
+- Summary：場景的核心要點摘要`;
 
 /**
  * Footer for backends addressed by storage key rather than filesystem path.
@@ -21,10 +21,10 @@ const NAV_FOOTER_LOCAL = `📌 使用说明：
  * so it is supplied by whoever assembles the two.
  */
 export function storageNavFooter(readTool: string): string {
-  return `📌 使用说明：
-- Path 是 scene block 的存储路径，请使用 **${readTool}** 工具读取完整内容（参数: path）
-- 热度：该场景被记忆命中的累计次数，越高越重要
-- Summary：场景的核心要点摘要`;
+  return `📌 使用說明：
+- Path 是 scene block 的儲存路徑，請使用 **${readTool}** 工具讀取完整內容（引數: path）
+- 熱度：該場景被記憶命中的累計次數，越高越重要
+- Summary：場景的核心要點摘要`;
 }
 
 export interface SceneNavigationRenderOptions {
@@ -110,12 +110,12 @@ export function renderSceneNavigation(
 
   const blocks = sorted.map((e) => {
     const pathLine = `### Path: ${opts.pathFor(e)}`;
-    const heatLine = `**热度**: ${e.heat}${heatEmoji(e.heat)}${e.updated ? ` | **更新**: ${e.updated}` : ""}`;
+    const heatLine = `**熱度**: ${e.heat}${heatEmoji(e.heat)}${e.updated ? ` | **更新**: ${e.updated}` : ""}`;
     const summaryLine = `Summary: ${e.summary}`;
     return `${pathLine}\n${heatLine}\n${summaryLine}`;
   });
 
-  return `${NAV_HEADER}\n*以下是当前场景记忆的索引，可根据需要 ${opts.readTool} 读取详细内容。*\n\n${blocks.join("\n\n")}\n\n${opts.footer}`;
+  return `${NAV_HEADER}\n*以下是當前場景記憶的索引，可根據需要 ${opts.readTool} 讀取詳細內容。*\n\n${blocks.join("\n\n")}\n\n${opts.footer}`;
 }
 
 /**

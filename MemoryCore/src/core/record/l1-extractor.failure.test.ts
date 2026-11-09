@@ -46,7 +46,7 @@ describe("L1 extraction failures", () => {
     await expect(extractL1Memories({
       messages: batch, sessionKey: "k", sessionId: "s1", baseDir: dir, config: undefined, options: { llmRunner: llm },
     })).rejects.toBeInstanceOf(L1ExtractionError);
-    const [background, fresh] = llm.calls[0].prompt.split("【待提取的新消息】");
+    const [background, fresh] = llm.calls[0].prompt.split("【待提取的新訊息】");
     for (const m of batch) expect(fresh).toContain(`[${m.id}]`);
     expect(background).not.toContain("[b1]");
   });

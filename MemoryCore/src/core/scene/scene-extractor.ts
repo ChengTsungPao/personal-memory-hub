@@ -21,7 +21,7 @@ import { CheckpointManager } from "../../utils/checkpoint.js";
 import { BackupManager } from "../../utils/backup.js";
 import { readSceneIndex, syncSceneIndex } from "../scene/scene-index.js";
 import type { SceneIndexEntry } from "../scene/scene-index.js";
-import { parseSceneBlock } from "../scene/scene-format.js";
+import { parseSceneBlock, stampSceneMeta } from "../scene/scene-format.js";
 import { generateSceneNavigation, stripSceneNavigation } from "../scene/scene-navigation.js";
 import { normalizeSceneFilenames } from "./filename-normalizer.js";
 import type { MemoryPromptMode } from "../../config.js";
@@ -189,13 +189,13 @@ export class SceneExtractor {
     let sceneCountWarning: string | undefined;
     const sceneCount = index.length;
     if (sceneCount >= this.maxScenes) {
-      sceneCountWarning = `当前场景数量为 **${sceneCount} 个**，已达到或超过 ${this.maxScenes} 个上限！\n**你必须先执行 MERGE 操作**，将最相似的 2-4 个场景合并为 1 个，然后再处理新记忆。\n参考合并对象：热度最低或主题高度重叠的场景。`;
+      sceneCountWarning = `當前場景數量為 **${sceneCount} 個**，已達到或超過 ${this.maxScenes} 個上限！\n**你必須先執行 MERGE 操作**，將最相似的 2-4 個場景合併為 1 個，然後再處理新記憶。\n參考合併物件：熱度最低或主題高度重疊的場景。`;
       this.logger?.warn(`${TAG} extract() scene count at limit: ${sceneCount}/${this.maxScenes}`);
     } else if (sceneCount === this.maxScenes - 1) {
-      sceneCountWarning = `当前场景数量为 **${sceneCount} 个**，距离上限只差 1 个！\n本次处理**只能 UPDATE 现有场景，不能 CREATE 新场景**。`;
+      sceneCountWarning = `當前場景數量為 **${sceneCount} 個**，距離上限只差 1 個！\n本次處理**只能 UPDATE 現有場景，不能 CREATE 新場景**。`;
       this.logger?.warn(`${TAG} extract() scene count near limit (CREATE blocked): ${sceneCount}/${this.maxScenes}`);
     } else if (sceneCount >= this.maxScenes - 3) {
-      sceneCountWarning = `当前场景数量为 **${sceneCount} 个**，建议优先考虑 UPDATE 或主动 MERGE 相似场景。`;
+      sceneCountWarning = `當前場景數量為 **${sceneCount} 個**，建議優先考慮 UPDATE 或主動 MERGE 相似場景。`;
       this.logger?.debug?.(`${TAG} extract() scene count approaching limit: ${sceneCount}/${this.maxScenes}`);
     }
 
@@ -203,6 +203,9 @@ export class SceneExtractor {
     const preExtractIndex = new Map(index.map((e) => [e.filename, e.summary]));
     // Also snapshot scene content so we can detect content-only changes vs metadata-only changes
     const preExtractContent = new Map<string, string>();
+    // Whole files and their `created` times, for re-stamping META dates after the LLM run
+    const preExtractRaw = new Map<string, string>();
+    const preExtractCreated = new Map<string, string>();
     for (const e of index) {
       try {
         let raw: string | null;
@@ -216,6 +219,8 @@ export class SceneExtractor {
         if (!raw) continue;
         const block = parseSceneBlock(raw, e.filename);
         preExtractContent.set(e.filename, block.content);
+        preExtractRaw.set(e.filename, raw);
+        preExtractCreated.set(e.filename, block.meta.created);
       } catch { /* non-fatal */ }
     }
 
@@ -235,7 +240,7 @@ export class SceneExtractor {
 
     const { systemPrompt: baseSystemPrompt, userPrompt } = buildSceneExtractionPrompt({
       memoriesJson,
-      sceneSummaries: sceneSummaries || "(无已有场景)",
+      sceneSummaries: sceneSummaries || "(無已有場景)",
       currentTimestamp,
       sceneCountWarning,
       existingSceneFiles,
@@ -385,6 +390,41 @@ export class SceneExtractor {
       this.logger?.warn(`${TAG} extract() filename normalization error: ${normErr instanceof Error ? normErr.message : String(normErr)}`);
     }
 
+    // Phase 5c: Stamp META dates on files the LLM created or changed. The model copies template
+    // dates or invents them (2024-05-22 on a store created 2026-09-29), so the system clock wins.
+    try {
+      const nowIso = formatTimestamp(new Date());
+      let files: string[];
+      if (this.storage) {
+        files = await this.storage.readdirNames(StoragePaths.sceneBlocksDir, ".md");
+      } else {
+        const fs = await import("node:fs/promises");
+        files = (await fs.default.readdir(sceneBlocksDir)).filter((f: string) => f.endsWith(".md"));
+      }
+      for (const file of files) {
+        const key = `${StoragePaths.sceneBlocksDir}${file}`;
+        let raw: string | null;
+        if (this.storage) {
+          raw = await this.storage.readFile(key);
+        } else {
+          const fs = await import("node:fs/promises");
+          const path = await import("node:path");
+          raw = await fs.default.readFile(path.default.join(sceneBlocksDir, file), "utf-8");
+        }
+        if (!raw || raw === preExtractRaw.get(file)) continue;
+        const stamped = stampSceneMeta(raw, file, nowIso, preExtractCreated.get(file));
+        if (this.storage) {
+          await this.storage.writeFile(key, stamped);
+        } else {
+          const fs = await import("node:fs/promises");
+          const path = await import("node:path");
+          await fs.default.writeFile(path.default.join(sceneBlocksDir, file), stamped, "utf-8");
+        }
+      }
+    } catch (stampErr) {
+      this.logger?.warn(`${TAG} extract() META date stamping error: ${stampErr instanceof Error ? stampErr.message : String(stampErr)}`);
+    }
+
     // Phase 6: Sync scene index (rebuilds from remaining non-empty files)
     const syncStartMs = Date.now();
     await syncSceneIndex(this.dataDir, this.storage);
@@ -532,13 +572,13 @@ export class SceneExtractor {
     const filenames: string[] = [];
 
     // Inject capacity counter at the top — LLM sees this first
-    lines.push(`**当前场景总数：${index.length} / ${this.maxScenes}**`);
+    lines.push(`**當前場景總數：${index.length} / ${this.maxScenes}**`);
     lines.push("");
 
     for (const entry of index) {
       filenames.push(entry.filename);
       lines.push(`### ${entry.filename}`);
-      lines.push(`**热度**: ${entry.heat} | **更新**: ${entry.updated}`);
+      lines.push(`**熱度**: ${entry.heat} | **更新**: ${entry.updated}`);
       lines.push(`**summary**: ${entry.summary}`);
       lines.push("");
     }

@@ -30,6 +30,21 @@ function sceneTime(iso: string): number {
   return Number.isNaN(t) ? 0 : t;
 }
 
+/**
+ * Team doctrine (code mode) needs this many scenes before it is written: with one or two scenes the
+ * model generalises a single topic into boilerplate, or copies the prompt's own writing rules.
+ */
+export const MIN_SCENES_FOR_DOCTRINE = 3;
+
+const FOOTER_LINE = /^>\s*\*\*(?:最[后後]更新|Last Updated)\*\*.*$/gim;
+
+/** Replace any footer the model wrote with one built from real values. */
+export function withSystemFooter(personaText: string, sceneCount: number, now: Date): string {
+  const body = personaText.replace(FOOTER_LINE, "").replace(/(?:\n\s*---\s*)+\s*$/, "").trimEnd();
+  const stamp = new Date(now.getTime() + 8 * 3600_000).toISOString().slice(0, 16).replace("T", " ");
+  return `${body}\n\n---\n\n> **最後更新**：${stamp} (UTC+8) · **來源場景**：${sceneCount} 個`;
+}
+
 /** Memories in a scene block: its list items (at least 1, so every scene counts toward the limit). */
 export function countMemories(sceneMarkdown: string): number {
   const items = sceneMarkdown.split("\n").filter((line) => /^\s*(?:[-*+]|\d+\.)\s+\S/.test(line)).length;
@@ -132,6 +147,10 @@ export class PersonaGenerator {
 
     // 2. Load scene index + identify changed scenes
     const index = await readSceneIndex(this.dataDir, this.storage);
+    if (this.promptMode === "code" && index.length < MIN_SCENES_FOR_DOCTRINE) {
+      this.logger?.info?.(`${TAG} Only ${index.length} scene(s), below ${MIN_SCENES_FOR_DOCTRINE}: skipping ${targetLabel}`);
+      return false;
+    }
     const changedScenes = index.filter((e) => {
       if (!cp.last_persona_time) return true;
       const updatedMs = new Date(e.updated).getTime();
@@ -282,6 +301,7 @@ export class PersonaGenerator {
       this.logger?.error(`${TAG} LLM wrote empty ${targetFile} — skipping`);
       return false;
     }
+    if (this.promptMode === "code") personaText = withSystemFooter(personaText, index.length, new Date());
 
     // 11. Append fresh scene navigation and write final content
     const nav = generateSceneNavigation(index, undefined, false);
