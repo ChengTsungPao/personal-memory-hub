@@ -24,6 +24,7 @@ import type { SceneIndexEntry } from "../scene/scene-index.js";
 import { parseSceneBlock, stampSceneMeta } from "../scene/scene-format.js";
 import { generateSceneNavigation, stripSceneNavigation } from "../scene/scene-navigation.js";
 import { normalizeSceneFilenames } from "./filename-normalizer.js";
+import { restoreDroppedFacts } from "./scene-fact-guard.js";
 import type { MemoryPromptMode } from "../../config.js";
 import { buildSceneExtractionPrompt } from "../prompts/scene-extraction.js";
 import { report } from "../report/reporter.js";
@@ -400,6 +401,44 @@ export class SceneExtractor {
       // Non-fatal — log and continue. Index sync below will simply pick up
       // whatever names are present on disk.
       this.logger?.warn(`${TAG} extract() filename normalization error: ${normErr instanceof Error ? normErr.message : String(normErr)}`);
+    }
+
+    // Phase 5b2: Put back concrete facts (backtick terms) the rewrite dropped without a 演化記錄 note.
+    try {
+      let files: string[];
+      if (this.storage) {
+        files = await this.storage.readdirNames(StoragePaths.sceneBlocksDir, ".md");
+      } else {
+        const fs = await import("node:fs/promises");
+        files = (await fs.default.readdir(sceneBlocksDir)).filter((f: string) => f.endsWith(".md"));
+      }
+      const newRaws = new Map<string, string>();
+      for (const file of files) {
+        let raw: string | null;
+        if (this.storage) {
+          raw = await this.storage.readFile(`${StoragePaths.sceneBlocksDir}${file}`);
+        } else {
+          const fs = await import("node:fs/promises");
+          const path = await import("node:path");
+          raw = await fs.default.readFile(path.default.join(sceneBlocksDir, file), "utf-8");
+        }
+        if (raw) newRaws.set(file, raw);
+      }
+      const { changed, restored } = restoreDroppedFacts(preExtractContent, newRaws);
+      for (const [file, raw] of changed) {
+        if (this.storage) {
+          await this.storage.writeFile(`${StoragePaths.sceneBlocksDir}${file}`, raw);
+        } else {
+          const fs = await import("node:fs/promises");
+          const path = await import("node:path");
+          await fs.default.writeFile(path.default.join(sceneBlocksDir, file), raw, "utf-8");
+        }
+      }
+      if (restored.length > 0) {
+        this.logger?.info(`${TAG} extract() restored ${restored.length} dropped fact(s): ${restored.map((r) => `${r.file}:${r.term}`).join(", ")}`);
+      }
+    } catch (guardErr) {
+      this.logger?.warn(`${TAG} extract() fact guard error: ${guardErr instanceof Error ? guardErr.message : String(guardErr)}`);
     }
 
     // Phase 5c: Stamp META dates on files the LLM created or changed. The model copies template
