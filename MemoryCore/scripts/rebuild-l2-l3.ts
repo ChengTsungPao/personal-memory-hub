@@ -8,7 +8,7 @@
  * Env:
  *   ONLY=agt-a,agt-b   rebuild only these blocks
  *   SKIP=agt-c         leave these blocks untouched (e.g. a repo block whose L2 came from elsewhere)
- *   BATCH=25           L1 records per scene-extraction call
+ *   BATCH=10           L1 records per scene-extraction call (25 lost more detail in a test rebuild)
  *   DRY=1              print the per-block plan and exit
  *
  * L1 comes from records/*.jsonl, not the l1_records table (see core/record/l1-log.ts). A block is a
@@ -32,7 +32,7 @@ if (!coreData || !yamlPath) {
 const list = (v?: string) => new Set((v ?? "").split(",").filter(Boolean));
 const only = list(process.env.ONLY);
 const skip = list(process.env.SKIP);
-const BATCH = Number(process.env.BATCH) || 25;
+const BATCH = Number(process.env.BATCH) || 10;
 // Production runs these as async gateway jobs with a 30-minute limit; the classes default to 3–5 minutes.
 const TIMEOUT_MS = 1_800_000;
 
