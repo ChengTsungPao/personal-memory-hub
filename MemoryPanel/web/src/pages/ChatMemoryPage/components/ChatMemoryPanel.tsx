@@ -80,6 +80,7 @@ export default function ChatMemoryPanel(
     handleLayerPageChange,
     handleL0LoadMore,
     handleLayerItemLoad,
+    handleTouchL2,
     handleSaveLayerItem,
     searchLayer,
     refreshLayer,
@@ -357,6 +358,7 @@ export default function ChatMemoryPanel(
                 layerLoading={layerLoading}
                 onLayerPageChange={handleLayerPageChange}
                 onLayerItemLoad={handleLayerItemLoad}
+                onTouchL2={handleTouchL2}
                 layerItemLoadingId={layerItemLoadingId}
                 onL0LoadMore={handleL0LoadMore}
                 l0MoreLoading={l0MoreLoading}

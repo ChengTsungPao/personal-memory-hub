@@ -36,6 +36,9 @@ export function mapLayerItem(i: ChatMemoryLayerItem) {
     refs: i.refs,
     tags: i.tags,
     created_at: i.created_at,
+    // 仅 scenario/ls 带这两个字段；scenario/read 不带，展开正文时不能覆盖掉列表里的值
+    ...(i.expired !== undefined ? { expired: i.expired } : {}),
+    ...(i.last_used_at ? { last_used_at: i.last_used_at } : {}),
   };
 }
 

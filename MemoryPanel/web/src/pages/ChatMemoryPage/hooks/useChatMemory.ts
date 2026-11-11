@@ -476,6 +476,36 @@ export function useChatMemory(props: { activeTeamId?: string | null } = {}) {
     [selected?.id, selected?.layers.L2, layer, t],
   );
 
+  // ── L2 标记为仍在使用：记一次读取，清掉 expired（不改正文） ──
+  const handleTouchL2 = useCallback(
+    async (itemId: string) => {
+      if (!selected?.id) return;
+      try {
+        await chatMemoryApi.touchL2(selected.id, itemId);
+        setBlocks((prev) =>
+          prev.map((b) => {
+            if (b.id !== selected.id) return b;
+            return {
+              ...b,
+              layers: {
+                ...b.layers,
+                L2: b.layers.L2.map((item) =>
+                  item.id === itemId
+                    ? { ...item, expired: false, last_used_at: new Date().toISOString() }
+                    : item,
+                ),
+              },
+            };
+          }),
+        );
+        tea.notify.success(t('memory.notify.l2Touched'));
+      } catch (e: unknown) {
+        tea.notify.error((e instanceof Error ? e.message : String(e)) || t('memory.notify.l2Failed'));
+      }
+    },
+    [selected?.id, t],
+  );
+
   // ── 编辑：保存单层内容（Owner-only；成功后乐观更新对应条目 body） ──
   // L1 = content 覆盖；L2 = 整份 scenario 正文覆盖（BFF 会剥 META 后写、内核重建 META）；
   // L3 = 整份 core persona 覆盖。失败时抛出，交由调用方（编辑弹窗）保留输入并提示。
@@ -716,6 +746,7 @@ export function useChatMemory(props: { activeTeamId?: string | null } = {}) {
     handleLayerPageChange,
     handleL0LoadMore,
     handleLayerItemLoad,
+    handleTouchL2,
     handleSaveLayerItem,
     searchLayer,
     handleDeleteBlock,

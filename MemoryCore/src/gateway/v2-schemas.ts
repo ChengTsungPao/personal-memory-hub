@@ -172,6 +172,10 @@ export interface ScenarioEntry extends Omit<GeneratedScenarioEntry, "version"> {
   summary?: string;
   team_id?: string;
   agent_id?: string;
+  /** Last agent read via /scenario/read (core/scene/scene-usage.ts). */
+  last_used_at?: string;
+  /** No agent read or pipeline update for EXPIRE_DAYS. */
+  expired?: boolean;
 }
 
 export interface ScenarioListData {
@@ -261,8 +265,11 @@ const safePath = z.string().min(1).refine(
   { message: "Path must be relative (no '..', no leading '/', no backslash/NUL)" },
 );
 
-/** scenarioRead with path traversal prevention. */
-export const scenarioReadRequestSchema = z.object({ path: safePath });
+/**
+ * scenarioRead with path traversal prevention. A read counts as use of the file
+ * (scene-usage.ts) unless `track: false` — the panel passes it when a person views the file.
+ */
+export const scenarioReadRequestSchema = z.object({ path: safePath, track: z.boolean().optional() });
 export type ScenarioReadRequest = z.infer<typeof scenarioReadRequestSchema>;
 
 /** scenarioWrite with path traversal prevention + summary. */

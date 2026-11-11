@@ -1311,7 +1311,12 @@ export function registerChatMemoryRoutes(api: Hono, deps: PanelDeps): void {
         if (requestedPath) {
           const readEnv = await deps.kernelHttp.postEnvelope<{
             content?: string | null;
-          }>("/v3/scenario/read", { ...idFields, path: requestedPath }, cred);
+          }>(
+            "/v3/scenario/read",
+            // 人在面板上查看不算「使用」，不更新 last_used；只有「标记仍在使用」（touch）才算。
+            { ...idFields, path: requestedPath, track: body?.touch === true },
+            cred,
+          );
           if (readEnv.code !== 0) return respondEnvelope(c, readEnv);
           const readData = readEnv.data as { content?: string | null } | null;
           const content =
@@ -1384,6 +1389,10 @@ export function registerChatMemoryRoutes(api: Hono, deps: PanelDeps): void {
                 tags: [],
                 refs: [],
                 created_at: t,
+                // 超过 30 天没被 agent 读取、也没被 pipeline 更新（内核 scene-usage.ts）
+                expired: r.expired === true,
+                last_used_at:
+                  typeof r.last_used_at === "string" ? r.last_used_at : undefined,
               };
             }),
             total: data.total ?? entries.length,

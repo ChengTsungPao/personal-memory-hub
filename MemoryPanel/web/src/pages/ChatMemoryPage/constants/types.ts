@@ -21,6 +21,9 @@ export interface AtomicItem {
   tags?: string[];
   /** 条目创建/记录时间（ISO8601），仅展示，不参与排序 */
   created_at?: string;
+  /** L2 only: 超过 30 天没被 agent 读取、也没被 pipeline 更新 */
+  expired?: boolean;
+  last_used_at?: string;
 }
 
 export interface MemoryBlock {
