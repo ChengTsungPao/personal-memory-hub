@@ -5,19 +5,50 @@
  * ports and env vars the file already had. A fact here is a backtick span in the old content.
  * It counts as kept if it still appears in any scene file after the run (it may have moved in a
  * merge or split), including the 演化記錄 line the prompt asks for when a fact is retired.
- * Otherwise the old line that carried it is appended to 關鍵事實依據 of the file that took over
- * the old file's content. Size stays bounded by the split guard in scene-extractor.ts.
+ * Otherwise the old line that carried it is appended to 關鍵事實依據 of the same file if it
+ * survived, else of the new file closest to that line. Size stays bounded by the split guard in
+ * scene-extractor.ts.
  */
 
 const FACT_SECTION = "## 關鍵事實依據";
 const MIN_TERM_CHARS = 3;
+// A lone plain word (`name`, `plan`, `Currently`) is emphasis, not a command, path or setting.
+const PLAIN_WORD = /^[A-Za-z][a-z]*$/;
 
 function factTerms(text: string): Set<string> {
   const out = new Set<string>();
   for (const m of text.matchAll(/`([^`\n]+)`/g)) {
-    if (m[1].trim().length >= MIN_TERM_CHARS) out.add(m[1]);
+    const t = m[1].trim();
+    if (t.length >= MIN_TERM_CHARS && !PLAIN_WORD.test(t)) out.add(m[1]);
   }
   return out;
+}
+
+/** ASCII words and CJK character pairs of a line, used to find the file on the same topic. */
+function lineTokens(line: string): Set<string> {
+  const out = new Set<string>();
+  for (const w of line.toLowerCase().match(/[a-z0-9]{3,}/g) ?? []) out.add(w);
+  for (const run of line.match(/[一-鿿]+/g) ?? []) {
+    for (let i = 0; i + 1 < run.length; i++) out.add(run.slice(i, i + 2));
+  }
+  return out;
+}
+
+/** The new file sharing the most tokens with `line`, or undefined when none shares any. */
+function closestFile(line: string, newFiles: Map<string, string>): string | undefined {
+  const tokens = lineTokens(line);
+  let best: string | undefined;
+  let bestShared = 0;
+  for (const [file, content] of newFiles) {
+    const lower = content.toLowerCase();
+    let shared = 0;
+    for (const t of tokens) if (lower.includes(t)) shared++;
+    if (shared > bestShared) {
+      best = file;
+      bestShared = shared;
+    }
+  }
+  return best;
 }
 
 /** The new file that took over `oldFile`: the same name if it survived, else the one sharing the most terms. */
@@ -62,16 +93,18 @@ export function restoreDroppedFacts(
     const terms = factTerms(oldContent);
     const dropped = [...terms].filter((t) => !allNew.includes(`\`${t}\``));
     if (dropped.length === 0) continue;
-    const target = successor(oldFile, terms, newRaws);
-    if (!target) continue;
-    const lines = additions.get(target) ?? [];
+    const fallback = successor(oldFile, terms, newRaws);
     for (const term of dropped) {
       const line = oldContent.split("\n").find((l) => l.includes(`\`${term}\``))!.trim();
+      // A renamed or split file's facts follow their own topic, not the file that kept most terms.
+      const target = newRaws.has(oldFile) ? oldFile : (closestFile(line, newRaws) ?? fallback);
+      if (!target) continue;
+      const lines = additions.get(target) ?? [];
       const bullet = line.startsWith("-") || line.startsWith("*") ? line : `- ${line}`;
       if (!lines.includes(bullet)) lines.push(bullet);
+      additions.set(target, lines);
       restored.push({ file: target, term });
     }
-    additions.set(target, lines);
   }
 
   const changed = new Map<string, string>();
