@@ -195,7 +195,7 @@ async function runLlmJudgment(
   // The model answered; an answer that cannot be parsed would not get better on a retry, so it
   // still falls back to storing everything as new.
   try {
-    return parseBatchResult(result, memories, logger);
+    return guardOversizedMerges(parseBatchResult(result, memories, logger), MAX_MERGED_CHARS, logger);
   } catch (err) {
     logger?.warn?.(
       `${TAG} Batch conflict detection unparsable, defaulting all to store: ${err instanceof Error ? err.message : String(err)}`,
@@ -418,6 +418,24 @@ function parseBatchResult(
     logger?.warn?.(`${TAG} Failed to parse conflict detection result: ${err instanceof Error ? err.message : String(err)}`);
     return fallbackStoreAll(memories);
   }
+}
+
+/**
+ * A merged memory longer than this has usually swallowed several unrelated topics into one entry
+ * (seen as 1,500–2,000-character records mixing a fallback strategy, a CVE and hook trust rules).
+ */
+export const MAX_MERGED_CHARS = 600;
+
+/**
+ * Turn update/merge decisions whose merged text is too long into a plain store: the new memory is
+ * kept as written and the targets are left alone, so nothing is lost and nothing is mashed together.
+ */
+export function guardOversizedMerges(decisions: DedupDecision[], maxChars = MAX_MERGED_CHARS, logger?: Logger): DedupDecision[] {
+  return decisions.map((d) => {
+    if ((d.action !== "merge" && d.action !== "update") || (d.merged_content ?? "").length <= maxChars) return d;
+    logger?.debug?.(`${TAG} ${d.action} for ${d.record_id} is ${d.merged_content!.length} chars (> ${maxChars}), storing instead`);
+    return { record_id: d.record_id, action: "store" as const, target_ids: [] };
+  });
 }
 
 /**

@@ -68,6 +68,18 @@ export function formatMeta(meta: SceneBlockMeta): string {
   ].join("\n");
 }
 
+/**
+ * Set a scene file's META dates from the system clock instead of trusting what the LLM wrote
+ * (it copies example dates or invents them). `created` keeps the previous file's value when that
+ * value is a real time not after `now`; otherwise it becomes `now`. `updated` is always `now`.
+ */
+export function stampSceneMeta(raw: string, filename: string, now: string, previousCreated?: string): string {
+  const block = parseSceneBlock(raw, filename);
+  const prevMs = previousCreated ? new Date(previousCreated).getTime() : NaN;
+  const created = !Number.isNaN(prevMs) && prevMs <= new Date(now).getTime() ? previousCreated! : now;
+  return formatSceneBlock({ ...block.meta, created, updated: now }, block.content);
+}
+
 function extractMetaField(metaBlock: string, field: string): string {
   const re = new RegExp(`^${field}:\\s*(.*)$`, "m");
   const m = metaBlock.match(re);
