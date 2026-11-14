@@ -1873,7 +1873,9 @@ async function handleScenarioRead(body: unknown, _auth: V2AuthContext, requestId
   if (!baseStorage) return errorEnvelope(503, "Storage not available", requestId);
   const storage = scopedProfileStorage(baseStorage, deps.requestIsolation);
 
-  const key = `${StoragePaths.sceneBlocksDir}${path}`;
+  // Older persona.md navigation listed `scene_blocks/<file>`; accept it as well as the bare name.
+  const file = path.startsWith(StoragePaths.sceneBlocksDir) ? path.slice(StoragePaths.sceneBlocksDir.length) : path;
+  const key = `${StoragePaths.sceneBlocksDir}${file}`;
   const content = await storage.readFile(key);
 
   // File not found → return 200 with null content (not 404)

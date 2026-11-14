@@ -258,7 +258,7 @@ reason: 具體原因描述
 }
 
 function buildWorkSceneSystemPrompt(maxScenes: number): string {
-  return `# Team Work Method Memory Consolidation Architect
+  return `# 工作記憶場景整理者
 
 **輸出語言**：\`.md\` 場景檔案的所有自然語言內容（檔名、章節標題、正文）使用與 "New Memories List" 中記憶相同的語言；META 欄位名（created/updated/summary/heat）和 \`[DELETED]\` 等標記保持英文。模板中的中文章節標題僅作為結構骨架，非中文輸出時請用目標語言的等價表達替換。若判定為中文，一律使用繁體中文（Traditional Chinese, zh-TW），嚴禁使用簡體中文。
 
@@ -342,7 +342,7 @@ function buildWorkSceneSystemPrompt(maxScenes: number): string {
 
 ❌ 錯誤示例：
 - \`Agent Memory 群聊抽取.md\`
-- \`團隊記憶(SOP).md\`
+- \`記憶系統(SOP).md\`
 - \`Q1 Milestone?.md\`
 
 ---
@@ -363,7 +363,7 @@ function buildWorkSceneSystemPrompt(maxScenes: number): string {
    - 黃色預警（接近 ${maxScenes}）：**優先 UPDATE 或主動 MERGE 相似場景**。
 
 **合併優先順序**：
-1. **工作對象高度重疊**：如"群聊記憶抽取"和"團隊共享記憶抽取" → 合併為"記憶抽取-策略"
+1. **工作對象高度重疊**：如"群聊記憶抽取"和"工作記憶抽取" → 合併為"記憶抽取-策略"
 2. **同一專案鏈路**：如"L1 Prompt 設計"和"L1 衝突檢測" → 合併為"Agent-Memory-L1管線"
 3. **同一方法體系**：如"Prompt 編寫原則"和"記憶抽取禁忌" → 合併為"記憶抽取-SOP與禁忌"
 4. **熱度最低場景**：如果沒有明顯重疊，優先合併或刪除 heat 最低的 2-3 個場景
@@ -512,13 +512,13 @@ heat: [Integer]
 
 ---
 
-## 主動觸發 L3 Team Memory 更新（可選）
+## 主動觸發 L3 工作原則更新（可選）
 
 **觸發條件**：
 - 跨場景複用的 SOP、禁忌、原則或設計方法形成穩定共識。
 - 專案級工作規則升級為跨專案規則。
 - 關鍵決策影響多個 Scene Block。
-- 某個工作方法、Agent 行為規則或協作約定應沉澱到 L3 Team Operating Memory。
+- 某個工作方法、Agent 行為規則或協作約定應沉澱到 L3 工作原則。
 
 **觸發方式**：在你的 text output 中輸出以下標記（不是檔案操作）：
 

@@ -15,6 +15,12 @@ const NAV_FOOTER_LOCAL = `📌 使用說明：
 - 熱度：該場景被記憶命中的累計次數，越高越重要
 - Summary：場景的核心要點摘要`;
 
+/** persona.md is read through /v3/scenario/read (MCP `scenario_read`), which takes the bare filename. */
+const NAV_FOOTER_SCENARIO = `📌 使用說明：
+- Path 是場景檔名，請用 **scenario_read** 工具讀取完整內容（引數: path，填上方的檔名）
+- 熱度：該場景被記憶命中的累計次數，越高越重要
+- Summary：場景的核心要點摘要`;
+
 /**
  * Footer for backends addressed by storage key rather than filesystem path.
  * The reading tool is a property of the mounted surface, not of the backend,
@@ -87,9 +93,9 @@ export function generateSceneNavigation(entries: SceneIndexEntry[], dataDir?: st
         ? `scenes/${e.filename}`
         : dataDir
           ? path.join(dataDir, "scene_blocks", e.filename)
-          : `scene_blocks/${e.filename}`,
-    readTool: useCos ? "tdai_read_file" : "read",
-    footer: useCos ? storageNavFooter("tdai_read_file") : NAV_FOOTER_LOCAL,
+          : e.filename,
+    readTool: useCos ? "tdai_read_file" : dataDir ? "read" : "scenario_read",
+    footer: useCos ? storageNavFooter("tdai_read_file") : dataDir ? NAV_FOOTER_LOCAL : NAV_FOOTER_SCENARIO,
   });
 }
 

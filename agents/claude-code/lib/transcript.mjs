@@ -81,6 +81,9 @@ export function readNewMessages(transcriptPath, afterUuid) {
 
     const text = extractText(entry);
     if (!text) continue; // pure thinking / tool-call turns carry no prose
+    // Background task notices arrive as user turns but were not written by the
+    // user; in L0 they became L1 records like "the monitor expired".
+    if (role === "user" && text.startsWith("<task-notification>")) continue;
 
     // Both fields are `z.iso.datetime()` in conversationItemSchema — ISO
     // strings, not epoch numbers (the API rejects a number with 400).

@@ -143,7 +143,7 @@ const PERSONA_SYSTEM_PROMPT = `# 🧬 Persona Architect - Incremental Evolution 
 
 **中文強制要求**：若判定輸出語言為中文，一律使用繁體中文（Traditional Chinese, zh-TW）書寫，嚴禁使用簡體中文。`;
 
-const TEAM_MEMORY_SYSTEM_PROMPT = `# Team Operating Doctrine Architect
+const TEAM_MEMORY_SYSTEM_PROMPT = `# L3 工作原則撰寫者
 
 **輸出語言**：\`persona.md\` 的所有自然語言內容使用與變化場景內容相同的語言；Markdown 語法、標籤格式、檔名 \`persona.md\` 保持英文。若判定為中文，一律使用繁體中文（Traditional Chinese, zh-TW），嚴禁使用簡體中文。
 
@@ -151,7 +151,7 @@ const TEAM_MEMORY_SYSTEM_PROMPT = `# Team Operating Doctrine Architect
 
 記憶通常來自一位使用者和 AI 助理的對話，不是多人團隊；請用「使用者」稱呼這位使用者，不要寫成「團隊」。
 
-這份 L3 不是專案總結、進度記錄、場景索引或事實彙總，而是在各種工作場合都可複用的 Operating Doctrine。它應幫助 Agent 在未來面對新任務時，知道應該如何判斷、如何執行、如何避免錯誤。
+這份 L3 不是專案總結、進度記錄、場景索引或事實彙總，而是在各種工作場合都可複用的工作原則。它應幫助 Agent 在未來面對新任務時，知道應該如何判斷、如何執行、如何避免錯誤。
 
 ## ⛔ 檔案操作約束
 
@@ -180,7 +180,7 @@ const TEAM_MEMORY_SYSTEM_PROMPT = `# Team Operating Doctrine Architect
 你要從 L2 場景中提煉所有工作場合都可複用的內容：
 
 1. **SOP**：以後類似任務應該按什麼流程做。
-2. **Principle**：團隊長期遵守的工作原則。
+2. **Principle**：使用者長期遵守的工作原則。
 3. **Decision Logic**：遇到取捨時按什麼標準判斷。
 4. **Boundary**：哪些事情不能做，哪些內容不能自動化。
 5. **Anti-pattern**：哪些做法會導致錯誤、汙染記憶、降低質量。
@@ -222,31 +222,31 @@ const TEAM_MEMORY_SYSTEM_PROMPT = `# Team Operating Doctrine Architect
 
 請參考以下格式，使用 **write** 或 **edit** 工具寫入最終內容。可以刪減章節，但必須保持 Markdown 格式，全文不超過 1200 字。
 
-# Team Operating Doctrine
+# 工作原則
 
-> **Operating Thesis**: [一句話概括團隊最核心、最通用的工作方法或 Agent 執行原則。]
+> **核心主張**：[一句話概括使用者最核心、最通用的工作方法或 Agent 執行原則。]
 
-## Core Principles
+## 核心原則
 [只寫跨工作場景穩定成立的高層原則。每條必須語義完整。]
 
 - [原則]&#58; [適用條件 / 判斷邏輯 / 為什麼重要]
 
-## Reusable SOPs
+## 可重複使用的 SOP
 [只寫能被反覆執行的流程。不要寫具體專案步驟。]
 
 - [SOP 名稱]&#58; 當 [觸發條件] 時，先 [步驟1]，再 [步驟2]，最後 [產出/驗收標準]。
 
-## Decision Logic
+## 判斷邏輯
 [記錄取捨標準和優先順序。]
 
 - 當 [場景] 時，優先 [A] 而不是 [B]，因為 [原因]。
 
-## Boundaries & Anti-patterns
+## 邊界與反模式
 [記錄禁忌、邊界和錯誤模式。]
 
 - 不要 [錯誤做法]；應改為 [推薦做法]，因為 [原因]。
 
-## Agent Rules
+## Agent 規則
 [記錄 Agent 在工作中預設遵守的行為規則。]
 
 - Agent 應 [行為規則]，避免 [風險]。
@@ -295,8 +295,8 @@ export function buildPersonaPrompt(params: PersonaPromptParams): PersonaPromptRe
 
   const existingPersonaSection = existingPersona
     ? isCodeMode
-      ? `\n## 📄 當前 Team Operating Doctrine（工程已預載入）\n\n` +
-        `*以下是現有 persona.md 中 Team Operating Doctrine 的完整內容（${existingPersona.length} 字元）。更新後必須壓縮在 1200 字以內：*\n\n` +
+      ? `\n## 📄 當前工作原則（工程已預載入）\n\n` +
+        `*以下是現有 persona.md 的完整內容（${existingPersona.length} 字元）。更新後必須壓縮在 1200 字以內；若標題仍是舊的英文模板（Team Operating Doctrine 等），改用上方模板的中文標題：*\n\n` +
         `\`\`\`markdown\n${existingPersona}\n\`\`\`\n\n---\n`
       : `\n## 📄 當前 Persona（工程已預載入）\n\n` +
         `*以下是現有 persona.md 的完整內容（${existingPersona.length} 字元），基於此更新後請控制在2000字內：*\n\n` +
