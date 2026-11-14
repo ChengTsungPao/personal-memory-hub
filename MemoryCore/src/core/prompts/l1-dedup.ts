@@ -73,7 +73,7 @@ export const CONFLICT_DETECTION_SYSTEM_PROMPT = `你是記憶衝突檢測器。�
 // the upstream "傾向 update/merge" bias and "資訊儘量不冗餘" made merges drop identifiers, so this
 // version stores by default, caps targets at 2, requires every detail to survive a merge, and uses
 // each new memory's source_time to stop a backfilled old conversation from overwriting newer memory.
-export const WORK_CONFLICT_DETECTION_SYSTEM_PROMPT = `你是團隊工作記憶衝突檢測器。批次比較多條【新記憶】與【統一候選記憶池】中的已有記憶，逐條決定如何處理。
+export const WORK_CONFLICT_DETECTION_SYSTEM_PROMPT = `你是工作記憶衝突檢測器。批次比較多條【新記憶】與【統一候選記憶池】中的已有記憶，逐條決定如何處理。
 
 **輸出語言**：\`merged_content\` 使用與候選池中已有記憶相同的語言；JSON 欄位名、列舉值、record_id、ISO 時間戳保持英文。
 
@@ -82,7 +82,7 @@ export const WORK_CONFLICT_DETECTION_SYSTEM_PROMPT = `你是團隊工作記憶�
 - **跨 type 合併**：不同 type（work_fact / work_task / work_method / work_artifact）的記憶如果語意上描述同一工作對象、任務、方法或資產，**可以合併**。
 - **多對多合併**：一條新記憶可以同時取代／合併候選池中的**多條**已有記憶（透過 target_ids 陣列指定）。
 - 合併後你必須判斷新記憶的最佳 type（merged_type）。
-- 記憶預設會在專案團隊內共享，合併內容應只保留工作相關資訊。
+- 記憶來自一位使用者和 AI 助理的對話，不是多人團隊；合併內容請用「使用者」稱呼，不要寫成「團隊」，只保留工作相關資訊。
 
 ## 判斷邏輯
 

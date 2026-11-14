@@ -81,7 +81,7 @@ const TOOLS = [
     inputSchema: {
       type: "object",
       properties: {
-        path: { type: "string", description: "Scenario block path, e.g. 'scene_blocks/postgres.md'." },
+        path: { type: "string", description: "Scenario block filename as scenario_list returns it, e.g. 'postgres.md'." },
         agent: { type: "string", description: AGENT_DESC },
       },
       required: ["path"],
@@ -98,7 +98,7 @@ const TOOLS = [
     inputSchema: {
       type: "object",
       properties: {
-        path: { type: "string", description: "Path ending in .md, e.g. 'scene_blocks/postgres.md'." },
+        path: { type: "string", description: "Scenario block filename as scenario_list returns it, e.g. 'postgres.md'." },
         content: { type: "string", description: "Full Markdown content of the block." },
         summary: { type: "string", description: "One-line summary shown in listings." },
       },
