@@ -950,6 +950,17 @@
   background-color: var(--tea-color-bg-warning-lighten-default);
 }
 
+/* L2 超过 30 天没被使用：只标记，不删除 */
+._memory-detail-atomic-expired {
+  flex-shrink: 0;
+  font-size: 11px;
+  line-height: 1;
+  padding: 3px 6px;
+  border-radius: 4px;
+  color: var(--tea-color-text-tertiary);
+  background-color: var(--tea-color-bg-secondary-default);
+}
+
 ._memory-detail-atomic-title {
   flex: 1;
   min-width: 0;

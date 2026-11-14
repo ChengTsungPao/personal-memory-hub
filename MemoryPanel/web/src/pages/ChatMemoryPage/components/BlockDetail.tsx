@@ -46,6 +46,7 @@ function AtomicHead({
   canCopyItem,
   onEdit,
   onCopy,
+  onTouch,
   expandable,
   expanded,
   loading,
@@ -59,6 +60,8 @@ function AtomicHead({
   canCopyItem: boolean;
   onEdit?: (item: AtomicItem) => void;
   onCopy: () => void;
+  /** L2 已过期条目：「标记为仍在使用」 */
+  onTouch?: () => void;
   /** L2 为 true：渲染 chevron 展开箭头、整行可点击展开/折叠 */
   expandable: boolean;
   /** 是否已展开（L2：hasBody） */
@@ -67,7 +70,7 @@ function AtomicHead({
   onToggle?: () => void;
 }) {
   const { t } = useTranslation();
-  const hasActions = canEditItem || canCopyItem;
+  const hasActions = canEditItem || canCopyItem || !!onTouch;
   const withBody = expandable ? expanded || loading : true;
 
   const inner = (
@@ -78,6 +81,16 @@ function AtomicHead({
       <span className="_memory-detail-atomic-title" title={item.title}>
         {item.title}
       </span>
+      {item.expired && (
+        <span
+          className="_memory-detail-atomic-expired"
+          title={t('memory.detail.expiredHint', {
+            time: item.last_used_at ? formatDisplayTime(item.last_used_at) : t('memory.detail.neverUsed'),
+          })}
+        >
+          {t('memory.detail.expired')}
+        </span>
+      )}
       <span className="_memory-detail-atomic-head-right">
         {time && (
           <span className="_memory-detail-atomic-time" title={item.created_at}>
@@ -108,6 +121,9 @@ function AtomicHead({
                 )}
                 {canCopyItem && (
                   <List.Item onClick={() => void onCopy()}>{t('common.copy')}</List.Item>
+                )}
+                {onTouch && (
+                  <List.Item onClick={() => onTouch()}>{t('memory.detail.markInUse')}</List.Item>
                 )}
               </List>
             </Dropdown>
@@ -294,6 +310,7 @@ function L2AtomicList({
   loadingItemId,
   canEdit,
   onEdit,
+  onTouch,
 }: {
   items: AtomicItem[];
   onLoadItem?: (itemId: string) => void;
@@ -302,6 +319,8 @@ function L2AtomicList({
   canEdit?: boolean;
   /** 点击编辑单条 */
   onEdit?: (item: AtomicItem) => void;
+  /** 已过期条目的「标记为仍在使用」（仅资产 Owner） */
+  onTouch?: (itemId: string) => void;
 }) {
   const { t } = useTranslation();
   const LAYERS = useLayers();
@@ -343,6 +362,7 @@ function L2AtomicList({
               canCopyItem={canCopyItem}
               onEdit={onEdit}
               onCopy={() => void handleCopy()}
+              onTouch={it.expired && onTouch ? () => onTouch(it.id) : undefined}
               expandable
               expanded={hasBody}
               loading={loading}
@@ -415,6 +435,7 @@ export function BlockDetail({
   layerLoading,
   onLayerPageChange,
   onLayerItemLoad,
+  onTouchL2,
   layerItemLoadingId,
   onL0LoadMore,
   l0MoreLoading,
@@ -437,6 +458,8 @@ export function BlockDetail({
   layerLoading: boolean;
   onLayerPageChange: (page: number) => void;
   onLayerItemLoad?: (itemId: string) => void;
+  /** L2 标记为仍在使用（清掉 expired）；未传则不显示入口 */
+  onTouchL2?: (itemId: string) => void;
   layerItemLoadingId?: string | null;
   /** L0 加载更多（追加更早的对话）；未传则不展示加载入口 */
   onL0LoadMore?: () => void;
@@ -1045,6 +1068,7 @@ export function BlockDetail({
             loadingItemId={layerItemLoadingId}
             canEdit={canEdit && !!onSaveLayerItem}
             onEdit={openEdit}
+            onTouch={canEdit ? onTouchL2 : undefined}
           />
         ) : (
           <AtomicList

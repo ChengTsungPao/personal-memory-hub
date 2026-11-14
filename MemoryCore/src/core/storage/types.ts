@@ -249,6 +249,7 @@ export interface StorageLogger {
  *   scene_blocks/{name}.md             — L2 scene blocks
  *   persona.md                         — L3 user persona
  *   .metadata/scene_index.json         — scene index
+ *   .metadata/scene_usage.json         — last agent read per scene block
  *   .metadata/checkpoint.json          — pipeline checkpoint
  *   .metadata/manifest.json            — metadata manifest
  *   .metadata/instance_id              — instance ID
@@ -268,6 +269,8 @@ export const StoragePaths = {
   metadataDir: ".metadata/",
   /** Scene index */
   sceneIndex: ".metadata/scene_index.json",
+  /** Last agent read of each scene block (core/scene/scene-usage.ts) */
+  sceneUsage: ".metadata/scene_usage.json",
   /** Pipeline checkpoint */
   checkpoint: ".metadata/checkpoint.json",
   /** Metadata manifest */

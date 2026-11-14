@@ -1814,6 +1814,8 @@ async function handleScenarioLs(body: unknown, _auth: V2AuthContext, requestId: 
       : e.key;
   });
   const versionMap = await getProfileVersionBatch(deps.getStore(), "l2", l2Filenames, deps.requestIsolation);
+  const { readSceneUsage, lastActivity, isSceneExpired } = await import("../core/scene/scene-usage.js");
+  const usage = await readSceneUsage(storage);
 
   const entries: ScenarioEntry[] = allEntries.map((e) => {
     const externalPath = e.key.startsWith(StoragePaths.sceneBlocksDir)
@@ -1822,14 +1824,19 @@ async function handleScenarioLs(body: unknown, _auth: V2AuthContext, requestId: 
     const displayPath = e.isDirectory && !externalPath.endsWith("/") ? `${externalPath}/` : externalPath;
     const indexEntry = indexMap.get(externalPath);
     const fallbackTime = e.lastModified.toISOString();
+    const createdAt = indexEntry?.created || fallbackTime;
+    const updatedAt = indexEntry?.updated || fallbackTime;
+    const lastUsedAt = e.isDirectory ? undefined : usage[externalPath];
     return {
       path: displayPath,
       summary: indexEntry?.summary || undefined,
       version: e.isDirectory ? 0 : (versionMap.get(externalPath) ?? 0),
       team_id: deps.requestIsolation?.teamId,
       agent_id: deps.requestIsolation?.agentId,
-      created_at: indexEntry?.created || fallbackTime,
-      updated_at: indexEntry?.updated || fallbackTime,
+      created_at: createdAt,
+      updated_at: updatedAt,
+      last_used_at: lastUsedAt,
+      expired: !e.isDirectory && isSceneExpired(lastActivity(createdAt, updatedAt, lastUsedAt)),
     };
   });
 
@@ -1867,7 +1874,7 @@ async function handleScenarioCount(body: unknown, _auth: V2AuthContext, requestI
 async function handleScenarioRead(body: unknown, _auth: V2AuthContext, requestId: string, deps: V2RouterDeps): Promise<ApiResponseEnvelope> {
   const parsed = scenarioReadRequestSchema.safeParse(body);
   if (!parsed.success) return errorEnvelope(400, formatZodError(parsed.error), requestId);
-  const { path } = parsed.data;
+  const { path, track } = parsed.data;
 
   const baseStorage = deps.getStorage();
   if (!baseStorage) return errorEnvelope(503, "Storage not available", requestId);
@@ -1884,6 +1891,15 @@ async function handleScenarioRead(body: unknown, _auth: V2AuthContext, requestId
       created_at: null as unknown as string,
       updated_at: null as unknown as string,
     }, requestId);
+  }
+
+  if (track !== false) {
+    try {
+      const { markSceneUsed } = await import("../core/scene/scene-usage.js");
+      await markSceneUsed(storage, path);
+    } catch (err) {
+      deps.logger.warn(`${TAG} [scenario/read] failed to record use of ${path}: ${err instanceof Error ? err.message : String(err)}`);
+    }
   }
 
   // Parse META for created/updated

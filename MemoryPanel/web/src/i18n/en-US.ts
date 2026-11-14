@@ -737,6 +737,7 @@ export const enUS = {
   'memory.notify.layerFailed': 'Failed to load layer data',
   'memory.notify.l2Failed': 'Failed to load L2 content',
   'memory.notify.copied': 'Copied',
+  'memory.notify.l2Touched': 'Marked as still in use',
   'memory.notify.copyFailed': 'Copy failed',
   'memory.confirm.private':
     'After setting to private, other Agents will no longer be able to use this memory',
@@ -767,6 +768,10 @@ export const enUS = {
   'memory.detail.collapseBody': 'Collapse',
   'memory.detail.expandBody': 'Expand',
   'memory.detail.noBody': 'No content.',
+  'memory.detail.expired': 'Expired',
+  'memory.detail.expiredHint': 'Not read by an agent or updated by new memories for 30 days. Last read: {{time}}',
+  'memory.detail.neverUsed': 'never',
+  'memory.detail.markInUse': 'Mark as still in use',
   'memory.detail.edit': 'Edit',
   'memory.detail.moreActions': 'More actions',
   'memory.layer.L0.label': 'L0 · Raw Conversation',

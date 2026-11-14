@@ -43,6 +43,10 @@ export interface ChatMemoryLayerItem {
   created_at?: string;
   /** L0 only: the conversation session the message belongs to */
   session_id?: string;
+  /** L2 only: 超过 30 天没被 agent 读取、也没被 pipeline 更新 */
+  expired?: boolean;
+  /** L2 only: agent 最后一次读取该文件的时间（ISO8601） */
+  last_used_at?: string;
 }
 
 /** A slice of conversation whose L1 extraction is still running or failed (see /chat-memory/l1-status). */
@@ -130,6 +134,17 @@ export const chatMemoryApi = {
       // 详情页时间筛选器（ISO8601），仅 L0 / L1 生效，后端对 L2 / L3 忽略
       ...(timeStart ? { time_start: timeStart } : {}),
       ...(timeEnd ? { time_end: timeEnd } : {}),
+    }),
+
+  /** 把一条 L2 标记为仍在使用：记一次读取，清掉 expired。 */
+  touchL2: (blockId: string, path: string) =>
+    chatMemoryCall<{ items: ChatMemoryLayerItem[] }>('layer', {
+      block_id: blockId,
+      layer: 'L2',
+      limit: 1,
+      offset: 0,
+      path,
+      touch: true,
     }),
 
   /** 批量设置某个 agent 的固定 memory，后端会原子校验借入上限。 */
